@@ -1,0 +1,64 @@
+# Desktop packages for Debian bookworm
+
+# Xorg
+xserver-xorg-core
+xserver-xorg-input-libinput
+x11-xserver-utils
+xinit
+xinput
+xserver-xorg-video-modesetting
+xserver-xorg-video-fbdev
+
+# GPU / Mesa userspace
+libdrm2
+libgbm1
+libegl-mesa0
+libglx-mesa0
+mesa-utils
+libgl1-mesa-dri
+libegl1
+libgles2
+glmark2-es2
+
+# Display manager + greeter
+lightdm
+lightdm-gtk-greeter
+
+# XFCE desktop
+xfce4
+xfce4-terminal
+xfce4-goodies
+xfce4-whiskermenu-plugin
+thunar
+
+# Desktop integration / settings
+network-manager-gnome
+dconf-cli
+dconf-gsettings-backend
+dconf-service
+
+# On-screen keyboard
+onboard
+
+# Remote desktop (VNC)
+x11vnc
+
+# Browser
+chromium
+
+# Bluetooth GUI
+blueman
+
+# Audio stack (PipeWire)
+# pipewire-audio pulls in the standard desktop audio set, including
+# libspa-0.2-bluetooth for A2DP/HFP endpoint support.
+pipewire-audio
+pipewire
+pipewire-pulse
+wireplumber
+pipewire-alsa
+alsa-utils
+libspa-0.2-modules
+pavucontrol
+xfce4-pulseaudio-plugin
+sox

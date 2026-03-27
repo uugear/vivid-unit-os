@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOTFS="${1:?missing rootfs dir}"
+
+ensure_link() {
+    local unit="$1"
+    local wants_dir="$ROOTFS/etc/systemd/system/multi-user.target.wants"
+    local target="../$unit"
+
+    [[ -e "$ROOTFS/etc/systemd/system/$unit" ]] || {
+        echo "60-bluetooth: missing unit $unit" >&2
+        exit 1
+    }
+
+    mkdir -p "$wants_dir"
+    ln -snf "$target" "$wants_dir/$unit"
+    [[ -L "$wants_dir/$unit" ]] || {
+        echo "60-bluetooth: failed to create wants link for $unit" >&2
+        exit 1
+    }
+}
+
+chmod +x "$ROOTFS/usr/local/sbin/vu-btattach" 2>/dev/null || true
+ensure_link vu-unblock-bluetooth.service
+ensure_link vu-btattach.service
+
+if [[ -e "$ROOTFS/etc/systemd/system/vu-bt-reset-before-reboot.service" ]]; then
+    systemctl --root="$ROOTFS" enable vu-bt-reset-before-reboot.service >/dev/null 2>&1 || {
+        echo "60-bluetooth: failed to enable vu-bt-reset-before-reboot.service" >&2
+        exit 1
+    }
+fi

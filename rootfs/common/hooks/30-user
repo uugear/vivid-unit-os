@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOTFS="${1:?missing rootfs dir}"
+
+VU_USER="${VU_USER:-vivid}"
+VU_PASS="${VU_PASS:-unit}"
+
+# Create user and basic groups
+chroot "$ROOTFS" /bin/bash -lc "set -euo pipefail
+export PATH=/usr/sbin:/sbin:\$PATH
+id -u ${VU_USER} >/dev/null 2>&1 || useradd -m -s /bin/bash ${VU_USER}
+echo '${VU_USER}:${VU_PASS}' | chpasswd
+usermod -aG sudo,video,render,input,audio,netdev,bluetooth ${VU_USER} || true
+"
+
+# Passwordless sudo for convenience
+install -d "$ROOTFS/etc/sudoers.d"
+cat > "$ROOTFS/etc/sudoers.d/010-vu-nopasswd" <<EOF_SUDO
+${VU_USER} ALL=(ALL) NOPASSWD:ALL
+EOF_SUDO
+chmod 0440 "$ROOTFS/etc/sudoers.d/010-vu-nopasswd"

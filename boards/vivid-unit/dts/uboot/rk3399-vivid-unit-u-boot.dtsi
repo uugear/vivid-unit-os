@@ -1,0 +1,93 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/* U-Boot-only pieces for Vivid Unit. */
+
+/ {
+	vividunit,dtb-build = "2026-03-13 uboot-split";
+
+	chosen {
+		bootargs = "earlycon=uart8250,mmio32,0xff1a0000 console=tty1 console=ttyS2,115200n8 root=/dev/mmcblk0p3 rootwait rw rootfstype=ext4 loglevel=7 ignore_loglevel fbcon=nodefer logo.nologo";
+	};
+
+	sdram-params {
+		rockchip,sdram-params = /incbin/("rk3399_ddr_666MHz_v1.30.bin");
+	};
+};
+
+
+/*
+ * The LCD rail is a fixed regulator already marked always-on/boot-on in the
+ * shared board description. Deleting power-supply here avoids U-Boot failing
+ * the panel probe when the regulator core reports the rail is already enabled.
+ */
+&lcd_panel {
+	/delete-property/ power-supply;
+};
+
+
+/* U-Boot: force scanout through VOPB only and define our own route_dsi node.
+ * The kernel DTB now owns its own route_dsi label, so U-Boot cannot reference
+ * an external &route_dsi label anymore.
+ */
+&display_subsystem {
+	ports = <&vopb_out>;
+	route {
+		route_dsi: route-dsi {
+			status = "okay";
+			connect = <&vopb_out_mipi>;
+		};
+	};
+};
+
+&mipi_in_vopb {
+	status = "okay";
+};
+
+&mipi_in_vopl {
+	status = "disabled";
+};
+
+&mipi_dsi {
+	status = "okay";
+	vivid-unit,force-vopb-lcdc;
+};
+
+&vopb {
+	status = "okay";
+};
+
+&vopb_mmu {
+	status = "okay";
+};
+
+&vopb_out {
+	status = "okay";
+};
+
+&vopb_out_mipi {
+	status = "okay";
+};
+
+&vopl {
+	status = "disabled";
+};
+
+&vopl_mmu {
+	status = "disabled";
+};
+
+&vopl_out {
+	status = "disabled";
+};
+
+&vopl_out_mipi {
+	status = "disabled";
+};
+
+/* U-Boot: keep the secondary MIPI output paths dark as well. */
+&vopb_out_mipi1 {
+	status = "disabled";
+};
+
+&vopl_out_mipi1 {
+	status = "disabled";
+};

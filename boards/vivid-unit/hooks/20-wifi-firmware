@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOTFS="${1:?missing rootfs dir}"
+
+# Install WiFi firmware/tools and fix Rockchip-specific firmware name expectations.
+# Keep the BT side intentionally minimal for now: on Vivid Unit, loading the
+# Broadcom .hcd patchram blob causes the UART controller to come up as an
+# unhealthy hci0 (00:00:00:00:00:00 / DOWN with tx timeouts during baud-rate
+# update). The plain btattach path is less complete, but it is the known-good
+# path that actually works on current hardware.
+chroot "$ROOTFS" /bin/bash -lc "set -euo pipefail
+export PATH=/usr/sbin:/sbin:\$PATH
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y --no-install-recommends firmware-brcm80211 wireless-regdb rfkill
+
+# Device expects these names for WiFi.
+ln -sf brcmfmac43430-sdio.AP6212.txt /lib/firmware/brcm/brcmfmac43430-sdio.txt || true
+ln -sf brcmfmac43430-sdio.bin /lib/firmware/brcm/brcmfmac43430-sdio.rockchip,rk3399-vivid-unit.bin || true
+
+# Remove any stale BT patchram aliases from older images so a rebuild cannot
+# accidentally regress back into the broken BCM43430A1 patchram path.
+rm -f /lib/firmware/brcm/BCM43430A1.rockchip,rk3399-vivid-unit.hcd || true
+rm -f /lib/firmware/brcm/BCM43430A1.rockchip,rk3399-vivid.hcd || true
+
+# Prefer upstream regulatory.db if alternatives exist.
+update-alternatives --set regulatory.db /lib/firmware/regulatory.db-upstream >/dev/null 2>&1 || true
+"

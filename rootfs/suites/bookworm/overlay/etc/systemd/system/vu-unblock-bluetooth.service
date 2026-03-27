@@ -1,0 +1,13 @@
+[Unit]
+Description=Unblock Bluetooth rfkill switch
+DefaultDependencies=no
+After=systemd-modules-load.service local-fs.target
+Before=bluetooth.service vu-btattach.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -lc 'if command -v rfkill >/dev/null 2>&1; then rfkill unblock bluetooth || true; fi'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

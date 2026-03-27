@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+TOPDIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+
+_usage() {
+  cat >&2 <<'USAGE'
+Usage:
+  vuos build <target>
+  vuos build <stage> <target> [stage-options...]
+  vuos <stage> <target> [stage-options...]
+
+Stages:
+  atf      Build TF-A BL31 (manual test stage)
+  uboot    Build U-Boot (prefers vendor BL31 from boards/<target>/rkbin)
+  kernel   Build Linux kernel (Image + DTBs + modules)
+  rootfs   Build root filesystem image
+  pack     Pack final raw disk image
+
+Examples:
+  sudo ./vuos build vivid-unit
+  ./vuos build uboot vivid-unit --clean
+  sudo ./vuos pack vivid-unit
+USAGE
+}
+
+cmd="${1:-}"
+arg1="${2:-}"
+arg2="${3:-}"
+
+run_stage() {
+  local stage="$1" target="$2"; shift 2
+  local sh="$TOPDIR/scripts/vuos-$stage.sh"
+  [[ -x "$sh" ]] || { echo "ERROR: missing stage script: $sh" >&2; exit 2; }
+  exec "$sh" "$target" "$@"
+}
+
+case "$cmd" in
+  build)
+    [[ -n "$arg1" ]] || { _usage; exit 2; }
+
+    # Mode A: build all stages for a target.
+    #   vuos build <target>
+    if [[ -z "$arg2" ]]; then
+      target="$arg1"
+
+      # load target manifest -> export variables (for callers that expect env)
+      eval "$(python3 "$TOPDIR/scripts/lib/manifest.py" "$TOPDIR/boards/${target}/board.toml" --topdir "$TOPDIR")"
+
+      "$TOPDIR/scripts/vuos-uboot.sh"  "$target"
+      "$TOPDIR/scripts/vuos-kernel.sh" "$target"
+      "$TOPDIR/scripts/vuos-rootfs.sh" "$target"
+
+      # firmware stage is optional (not all repos have it yet)
+      if [[ -x "$TOPDIR/scripts/vuos-firmware.sh" ]]; then
+        "$TOPDIR/scripts/vuos-firmware.sh" "$target"
+      fi
+
+      "$TOPDIR/scripts/vuos-pack.sh"   "$target"
+      exit 0
+    fi
+
+    # Mode B: stage-specific build.
+    #   vuos build <stage> <target> [options...]
+    stage="$arg1"
+    target="$arg2"
+    shift 3
+
+    case "$stage" in
+      atf|uboot|kernel|rootfs|pack)
+        run_stage "$stage" "$target" "$@"
+        ;;
+      *)
+        echo "ERROR: unknown stage: $stage" >&2
+        _usage
+        exit 2
+        ;;
+    esac
+    ;;
+
+  atf|uboot|kernel|rootfs|pack)
+    [[ -n "$arg1" ]] || { _usage; exit 2; }
+    stage="$cmd"
+    target="$arg1"
+    shift 2
+    run_stage "$stage" "$target" "$@"
+    ;;
+
+  -h|--help|help)
+    _usage
+    exit 0
+    ;;
+
+  *)
+    _usage
+    exit 2
+    ;;
+esac

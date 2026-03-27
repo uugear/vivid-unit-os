@@ -1,0 +1,35 @@
+diff --git a/drivers/input/touchscreen/goodix.c b/drivers/input/touchscreen/goodix.c
+index 4b497540ed2d..5d4c3e2dfc16 100644
+--- a/drivers/input/touchscreen/goodix.c
++++ b/drivers/input/touchscreen/goodix.c
+@@ -1153,13 +1153,11 @@ static int goodix_configure_dev(struct goodix_ts_data *ts)
+ 	ts->input_dev->keycodesize = sizeof(ts->keymap[0]);
+ 	ts->input_dev->keycodemax = GOODIX_MAX_KEYS;
+ 
+-	/* Capacitive Windows/Home button on some devices */
++	/* Three sense buttons on touchscreen */
++	ts->keymap[0] = KEY_PROG3;
++	ts->keymap[1] = KEY_PROG2;
++	ts->keymap[2] = KEY_PROG1;
+ 	for (i = 0; i < GOODIX_MAX_KEYS; ++i) {
+-		if (i == 0)
+-			ts->keymap[i] = KEY_LEFTMETA;
+-		else
+-			ts->keymap[i] = KEY_F1 + (i - 1);
+-
+ 		input_set_capability(ts->input_dev, EV_KEY, ts->keymap[i]);
+ 	}
+ 
+diff --git a/drivers/input/touchscreen/goodix.h b/drivers/input/touchscreen/goodix.h
+index 87797cc88b32..ef3b8a42b0d1 100644
+--- a/drivers/input/touchscreen/goodix.h
++++ b/drivers/input/touchscreen/goodix.h
+@@ -55,7 +55,7 @@
+ 
+ #define GOODIX_ID_MAX_LEN			4
+ #define GOODIX_CONFIG_MAX_LENGTH		240
+-#define GOODIX_MAX_KEYS				7
++#define GOODIX_MAX_KEYS				3
+ 
+ enum goodix_irq_pin_access_method {
+ 	IRQ_PIN_ACCESS_NONE,

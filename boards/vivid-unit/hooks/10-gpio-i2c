@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOTFS="${1:?missing rootfs dir}"
+VU_USER="${VU_USER:-vivid}"
+
+# Udev rules are provided via overlay (etc/udev/rules.d/60-gpiochip.rules).
+
+# Ensure groups and add user
+chroot "$ROOTFS" /bin/bash -lc "set -euo pipefail
+export PATH=/usr/sbin:/sbin:\$PATH
+groupadd -f gpio
+groupadd -f i2c
+usermod -aG gpio,i2c ${VU_USER} || true
+"

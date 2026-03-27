@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOTFS="${1:?missing rootfs dir}"
+
+# Files are provided via overlay (usr/local/sbin/vu-grow-rootfs + unit).
+# Ensure executable bit and enable the service.
+chmod +x "$ROOTFS/usr/local/sbin/vu-grow-rootfs" 2>/dev/null || true
+systemctl --root="$ROOTFS" enable vu-grow-rootfs.service >/dev/null 2>&1 || true
+rm -f "$ROOTFS/var/lib/vu-grow-rootfs.done" || true

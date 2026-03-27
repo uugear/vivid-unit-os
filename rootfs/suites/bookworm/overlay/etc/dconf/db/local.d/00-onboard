@@ -1,0 +1,26 @@
+[org/gnome/nm-applet/eap/07f299bd-32b4-4c16-a7cf-219a8053ee15]
+ignore-ca-cert=false
+ignore-phase2-ca-cert=false
+
+[org/onboard]
+current-settings-page=3
+layout='/usr/share/onboard/layouts/Small.onboard'
+schema-version='2.3'
+start-minimized=true
+system-theme-associations={'HighContrast': 'HighContrast', 'HighContrastInverse': 'HighContrastInverse', 'LowContrast': 'LowContrast', 'ContrastHighInverse': 'HighContrastInverse', 'Default': '', 'Xfce': '/usr/share/onboard/themes/Droid.theme'}
+theme='/usr/share/onboard/themes/Droid.theme'
+use-system-defaults=false
+
+[org/onboard/theme-settings]
+color-scheme='/usr/share/onboard/themes/Granite.colors'
+key-fill-gradient=4.0
+key-gradient-direction=-5.0
+key-shadow-size=30.0
+key-shadow-strength=70.0
+key-size=95.0
+key-stroke-gradient=15.0
+key-style='gradient'
+roundrect-radius=20.0
+
+[org/onboard/window]
+docking-enabled=true

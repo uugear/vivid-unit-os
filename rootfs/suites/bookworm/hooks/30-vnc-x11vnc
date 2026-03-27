@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOTFS="${1:?missing rootfs dir}"
+
+VU_VNC_PASS="${VU_VNC_PASS:-unit}"
+
+install -d -m 0755 "$ROOTFS/etc/x11vnc"
+
+# Generate VNC password file inside chroot (avoids host dependency)
+chroot "$ROOTFS" /bin/bash -lc "set -euo pipefail
+export PATH=/usr/sbin:/sbin:\$PATH
+x11vnc -storepasswd "${VU_VNC_PASS}" /etc/x11vnc/passwd
+chmod 600 /etc/x11vnc/passwd
+"
+
+# Service unit is provided via overlay
+systemctl --root="$ROOTFS" enable x11vnc.service >/dev/null 2>&1 || true

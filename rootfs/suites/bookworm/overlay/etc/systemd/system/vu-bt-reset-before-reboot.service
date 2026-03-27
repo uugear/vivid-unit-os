@@ -1,0 +1,15 @@
+[Unit]
+Description=Force Broadcom Bluetooth controller into reset before reboot/poweroff
+DefaultDependencies=no
+Before=shutdown.target reboot.target halt.target poweroff.target kexec.target
+Conflicts=shutdown.target reboot.target halt.target poweroff.target kexec.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -lc 'hciconfig hci0 down >/dev/null 2>&1 || true; killall -q -9 btattach >/dev/null 2>&1 || true; if command -v gpioset >/dev/null 2>&1; then gpioset -m exit gpiochip2 26=0 >/dev/null 2>&1 || true; gpioset -m exit gpiochip0 9=0 >/dev/null 2>&1 || true; fi; if [ -w /proc/bluetooth/sleep/btwrite ]; then echo 0 >/proc/bluetooth/sleep/btwrite || true; fi; for n in /sys/class/rfkill/*/type; do [ -f "$n" ] || continue; if grep -qx bluetooth "$n" 2>/dev/null; then s="${n%/type}/state"; [ -w "$s" ] && echo 0 >"$s" || true; fi; done'
+
+[Install]
+WantedBy=halt.target
+WantedBy=poweroff.target
+WantedBy=reboot.target
+WantedBy=kexec.target

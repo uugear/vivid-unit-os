@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOTFS="${1:?missing rootfs dir}"
+
+# ALSA init script + unit are provided via overlay.
+chmod +x "$ROOTFS/usr/local/sbin/vu-alsa-init-es8316" 2>/dev/null || true
+systemctl --root="$ROOTFS" enable vu-alsa-init-es8316.service >/dev/null 2>&1 || true

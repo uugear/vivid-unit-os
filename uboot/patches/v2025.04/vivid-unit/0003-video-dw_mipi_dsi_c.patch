@@ -1,0 +1,151 @@
+--- a/drivers/video/dw_mipi_dsi.c
++++ b/drivers/video/dw_mipi_dsi.c
+@@ -23,6 +23,7 @@
+ #include <linux/iopoll.h>
+ #include <linux/time.h>
+ #include <video_bridge.h>
++#include <stdio.h>
+ 
+ #define HWVER_131			0x31333100	/* IP version 1.31 */
+ 
+@@ -224,6 +225,8 @@
+ 	const struct mipi_dsi_phy_ops *phy_ops;
+ };
+ 
++#define DSI_LOG(fmt, ...) printf("dw-mipi-dsi: " fmt "\n", ##__VA_ARGS__)
++
+ static int dsi_mode_vrefresh(struct display_timing *timings)
+ {
+ 	int refresh = 0;
+@@ -275,6 +278,10 @@
+ {
+ 	struct dw_mipi_dsi *dsi = host_to_dsi(host);
+ 
++	DSI_LOG("host_attach lanes=%u max=%u format=%u mode_flags=%#lx channel=%u",
++		device->lanes, dsi->max_data_lanes, device->format,
++		(unsigned long)device->mode_flags, device->channel);
++
+ 	if (device->lanes > dsi->max_data_lanes) {
+ 		dev_err(device->dev,
+ 			"the number of data lanes(%u) is too many\n",
+@@ -456,6 +463,10 @@
+ 	else
+ 		val |= VID_MODE_TYPE_NON_BURST_SYNC_EVENTS;
+ 
++	DSI_LOG("video_mode_config device_flags=%#lx selected_cfg=%#x burst=%u sync_pulse=%u",
++		(unsigned long)device->mode_flags, val,
++		!!(device->mode_flags & MIPI_DSI_MODE_VIDEO_BURST),
++		!!(device->mode_flags & MIPI_DSI_MODE_VIDEO_SYNC_PULSE));
+ 	dsi_write(dsi, DSI_VID_MODE_CFG, val);
+ }
+ 
+@@ -464,6 +475,8 @@
+ {
+ 	const struct mipi_dsi_phy_ops *phy_ops = dsi->phy_ops;
+ 
++	DSI_LOG("set_mode requested=%#lx device_flags=%#lx", mode_flags,
++		(unsigned long)(dsi->device ? dsi->device->mode_flags : 0));
+ 	dsi_write(dsi, DSI_PWR_UP, RESET);
+ 
+ 	if (mode_flags & MIPI_DSI_MODE_VIDEO) {
+@@ -478,6 +491,7 @@
+ 		phy_ops->post_set_mode(dsi->device, mode_flags);
+ 
+ 	dsi_write(dsi, DSI_PWR_UP, POWERUP);
++	DSI_LOG("set_mode done requested=%#lx", mode_flags);
+ }
+ 
+ static void dw_mipi_dsi_init_pll(struct dw_mipi_dsi *dsi)
+@@ -743,12 +757,16 @@
+ 	const struct mipi_dsi_phy_ops *phy_ops = dsi->phy_ops;
+ 	struct mipi_dsi_device *device = dsi->device;
+ 	int ret;
+-
++ 
++	DSI_LOG("bridge_set begin timing=%ux%u pixclock=%u lanes=%u format=%u device_flags=%#lx",
++		timings->hactive.typ, timings->vactive.typ, timings->pixelclock.typ,
++		device->lanes, device->format, (unsigned long)device->mode_flags);
+ 	ret = phy_ops->get_lane_mbps(dsi->device, timings, device->lanes,
+ 				     device->format, &dsi->lane_mbps);
+ 	if (ret)
+ 		dev_warn(dsi->dsi_host.dev, "Phy get_lane_mbps() failed\n");
+-
++	DSI_LOG("bridge_set lane_mbps=%u get_lane_ret=%d", dsi->lane_mbps, ret);
++ 
+ 	dw_mipi_dsi_init_pll(dsi);
+ 	dw_mipi_dsi_dpi_config(dsi, timings);
+ 	dw_mipi_dsi_packet_handler_config(dsi);
+@@ -774,6 +792,7 @@
+ 
+ 	/* Switch to cmd mode for panel-bridge pre_enable & panel prepare */
+ 	dw_mipi_dsi_set_mode(dsi, 0);
++	DSI_LOG("bridge_set end switched_to_cmd_mode");
+ }
+ 
+ static int dw_mipi_dsi_init(struct udevice *dev,
+@@ -785,34 +804,38 @@
+ 	struct dw_mipi_dsi *dsi = dev_get_priv(dev);
+ 	struct clk clk;
+ 	int ret;
+-
++ 
++	DSI_LOG("init begin max_data_lanes=%u device_flags=%#lx", max_data_lanes,
++		(unsigned long)device->mode_flags);
++ 
+ 	if (!phy_ops->init || !phy_ops->get_lane_mbps) {
+ 		dev_err(device->dev, "Phy not properly configured\n");
+ 		return -ENODEV;
+ 	}
+-
++ 
+ 	dsi->phy_ops = phy_ops;
+ 	dsi->max_data_lanes = max_data_lanes;
+ 	dsi->device = device;
+ 	dsi->dsi_host.dev = (struct device *)dev;
+ 	dsi->dsi_host.ops = &dw_mipi_dsi_host_ops;
+ 	device->host = &dsi->dsi_host;
+-
++ 
+ 	dsi->base = dev_read_addr_ptr(device->dev);
+ 	if (!dsi->base) {
+ 		dev_err(device->dev, "dsi dt register address error\n");
+ 		return -EINVAL;
+ 	}
+-
++ 
+ 	/*
+ 	 * The Rockchip based devices don't have px_clk, so simply move
+ 	 * on.
+ 	 */
+ 	if (IS_ENABLED(CONFIG_DISPLAY_ROCKCHIP_DW_MIPI)) {
++		DSI_LOG("init using rockchip bridge path base=%p", dsi->base);
+ 		dw_mipi_dsi_bridge_set(dsi, timings);
+ 		return 0;
+ 	}
+-
++ 
+ 	ret = clk_get_by_name(device->dev, "px_clk", &clk);
+ 	if (ret) {
+ 		dev_err(device->dev, "peripheral clock get error %d\n", ret);
+@@ -821,7 +844,7 @@
+ 
+ 	/*  get the pixel clock set by the clock framework */
+ 	timings->pixelclock.typ = clk_get_rate(&clk);
+-
++ 
+ 	dw_mipi_dsi_bridge_set(dsi, timings);
+ 
+ 	return 0;
+@@ -830,9 +853,11 @@
+ static int dw_mipi_dsi_enable(struct udevice *dev)
+ {
+ 	struct dw_mipi_dsi *dsi = dev_get_priv(dev);
+-
++   
++	DSI_LOG("enable begin device_flags=%#lx", (unsigned long)(dsi->device ? dsi->device->mode_flags : 0));
+ 	/* Switch to video mode for panel-bridge enable & panel enable */
+ 	dw_mipi_dsi_set_mode(dsi, MIPI_DSI_MODE_VIDEO);
++	DSI_LOG("enable end requested_video_mode");
+ 
+ 	return 0;
+ }

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOTFS="${1:?missing rootfs dir}"
+
+gtk-update-icon-cache -f -t "$ROOTFS/usr/share/icons/hicolor" || true

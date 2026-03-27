@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOTFS="${1:?missing rootfs dir}"
+
+VU_TZ="${VU_TZ:-Europe/Amsterdam}"
+VU_LOCALE="${VU_LOCALE:-en_US.UTF-8}"
+
+chroot "$ROOTFS" /bin/bash -lc "set -euo pipefail
+export PATH=/usr/sbin:/sbin:\$PATH
+export DEBIAN_FRONTEND=noninteractive
+sed -i 's/^# \\(${VU_LOCALE}.*\\)/\\1/' /etc/locale.gen || true
+locale-gen >/dev/null
+update-locale LANG=${VU_LOCALE}
+
+echo '${VU_TZ}' > /etc/timezone
+ln -sf /usr/share/zoneinfo/${VU_TZ} /etc/localtime
+# tzdata postinst may call dpkg-reconfigure; keep it non-interactive
+(dpklike=1; dpkg-reconfigure -f noninteractive tzdata >/dev/null) || true
+"

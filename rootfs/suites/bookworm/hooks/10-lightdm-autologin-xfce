@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOTFS="${1:?missing rootfs dir}"
+
+VU_USER="${VU_USER:-vivid}"
+
+install -d "$ROOTFS/etc/lightdm/lightdm.conf.d" "$ROOTFS/var/lib/lightdm/data"
+cat > "$ROOTFS/etc/lightdm/lightdm.conf.d/50-vu-autologin.conf" <<EOF_LDM
+[Seat:*]
+autologin-user=${VU_USER}
+autologin-user-timeout=0
+user-session=xfce
+greeter-session=lightdm-gtk-greeter
+EOF_LDM

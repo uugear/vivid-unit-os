@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOTFS="${1:?missing rootfs dir}"
+
+# Branding can be overridden at build time via environment variables.
+VUOS_NAME="${VUOS_NAME:-Vivid Unit OS}"
+VUOS_HOME_URL="${VUOS_HOME_URL:-https://vividunit.com/}"
+
+# Auto-generate a version string like YYYYMMDD-N (local date by default).
+# The daily sequence counter is persisted on the build host so multiple builds
+# on the same day will get incrementing numbers.
+if [[ -z "${VUOS_VERSION:-}" ]]; then
+  version_tz="${VUOS_VERSION_TZ:-${VU_TZ:-Europe/Amsterdam}}"
+  build_date="$(TZ="$version_tz" date +%Y%m%d)"
+
+  state_dir="${VUOS_VERSION_STATE_DIR:-${TOPDIR:-.}/out/version}"
+  mkdir -p "$state_dir"
+
+  seq_file="$state_dir/.vuos_version_seq"
+  lock_file="$state_dir/.vuos_version_seq.lock"
+
+  # Best-effort locking for concurrent builds.
+  if command -v flock >/dev/null 2>&1; then
+    exec 9>"$lock_file"
+    flock 9
+  fi
+
+  last_date="" last_seq=""
+  if [[ -f "$seq_file" ]]; then
+    read -r last_date last_seq <"$seq_file" || true
+  fi
+
+  if [[ "$last_date" == "$build_date" && "${last_seq:-}" =~ ^[0-9]+$ ]]; then
+    seq=$((last_seq + 1))
+  else
+    seq=1
+  fi
+
+  printf '%s %s\n' "$build_date" "$seq" >"$seq_file"
+  VUOS_VERSION="${build_date}-${seq}"
+fi
+
+# Apply branding inside the target rootfs via dpkg-divert and symlinks.
+chroot "$ROOTFS" /usr/bin/env \
+  VUOS_VERSION="$VUOS_VERSION" \
+  VUOS_NAME="$VUOS_NAME" \
+  VUOS_HOME_URL="$VUOS_HOME_URL" \
+  /bin/bash -lc '
+set -euo pipefail
+export PATH=/usr/sbin:/sbin:$PATH
+
+pkg="vuos-branding"
+
+divert() {
+  local f="$1" d="$2"
+  if dpkg-divert --list "$f" 2>/dev/null | grep -q "$f"; then
+    return 0
+  fi
+  dpkg-divert --package "$pkg" --add --rename --divert "$d" "$f"
+}
+
+# Move base-files provided identity files out of the way to avoid being overwritten on upgrades.
+divert /usr/lib/os-release  /usr/lib/os-release.base-files
+divert /etc/os-release      /etc/os-release.base-files
+divert /etc/issue           /etc/issue.base-files
+divert /etc/issue.net       /etc/issue.net.base-files
+
+# Read Debian version/codename from the original os-release if possible.
+base="/usr/lib/os-release.base-files"
+version_id="$(grep -m1 "^VERSION_ID=" "$base" 2>/dev/null | cut -d= -f2- | tr -d "\"")" || true
+codename="$(grep -m1 "^VERSION_CODENAME=" "$base" 2>/dev/null | cut -d= -f2- | tr -d "\"")" || true
+: "${version_id:=unknown}"
+: "${codename:=unknown}"
+
+mkdir -p /usr/lib/vuos
+
+cat > /usr/lib/os-release <<EOF
+ID=vuos
+NAME="$VUOS_NAME"
+PRETTY_NAME="$VUOS_NAME (Debian $version_id $codename)"
+ID_LIKE=debian
+
+VERSION_ID="$version_id"
+VERSION="$VUOS_VERSION"
+VERSION_CODENAME="$codename"
+
+VARIANT="Debian derivative"
+VARIANT_ID=vuos
+HOME_URL="$VUOS_HOME_URL"
+EOF
+chmod 0644 /usr/lib/os-release
+
+cat > /usr/lib/vuos/issue <<EOF
+$VUOS_NAME (Debian $version_id $codename) \n \l
+EOF
+chmod 0644 /usr/lib/vuos/issue
+
+cat > /usr/lib/vuos/issue.net <<EOF
+$VUOS_NAME (Debian $version_id $codename)
+EOF
+chmod 0644 /usr/lib/vuos/issue.net
+
+ln -sf ../usr/lib/os-release      /etc/os-release
+ln -sf ../usr/lib/vuos/issue      /etc/issue
+ln -sf ../usr/lib/vuos/issue.net  /etc/issue.net
+'

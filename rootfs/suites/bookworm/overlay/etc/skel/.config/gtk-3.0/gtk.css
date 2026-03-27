@@ -1,0 +1,77 @@
+menubar {
+  min-height: 36px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+menubar > menuitem {
+  min-height: 36px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+menu menuitem {
+  min-height: 36px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+menu menuitem image {
+  margin-left: 10px;
+  margin-right: 10px;
+  -gtk-icon-transform: scale(2);
+}
+menu > arrow.top, menu > arrow.bottom {
+  min-height: 36px;
+  padding: 6px 0;
+}
+#whiskermenu-window .commands-area .command-button {
+  min-width:  36px;
+  min-height: 36px;
+  padding-left: 12px;
+  padding-right: 12px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+#whiskermenu-window .commands-area .command-button image {
+  -gtk-icon-transform: scale(1.5);
+}
+scrollbar, scrollbar slider {
+  min-width: 24px;
+  min-height: 24px;
+}
+scrollbar.vertical slider {
+  min-width: 24px;
+}
+scrollbar.horizontal slider {
+  min-height: 24px;
+}
+scrollbar.overlay-indicator slider {
+  min-width: 24px;
+  min-height: 24px;
+}
+scale slider {
+  min-width: 36px;
+  min-height: 36px;
+  border-radius: 18px;
+}
+scale trough {
+  min-height: 24px;
+  border-radius: 12px;
+}
+scale trough highlight {
+  min-height: 24px;
+  border-radius: 12px;
+}
+notebook > header > tabs > tab {
+  min-height: 36px;
+  padding: 6px 10px;
+}
+tooltip {
+  opacity: 0;
+}
+XfdesktopIconView.view .rubberband {
+  border: 0;
+  background-color: rgba(0,0,0,0);
+}

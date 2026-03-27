@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOTFS="${1:?missing rootfs dir}"
+
+# Rebuild the system dconf database at the very end of board hooks.
+# The earlier suite hook runs before board hooks, but board hooks may still
+# install packages or otherwise change the final rootfs state. Re-running
+# dconf update here ensures /etc/dconf/db/local matches the final image.
+chroot "$ROOTFS" /bin/bash -lc "set -euo pipefail
+export PATH=/usr/sbin:/sbin:\$PATH
+mkdir -p /etc/dconf/db
+
+dconf update
+
+test -s /etc/dconf/db/local
+"

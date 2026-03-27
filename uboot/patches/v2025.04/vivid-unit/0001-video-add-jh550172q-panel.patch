@@ -1,0 +1,31 @@
+diff --git a/drivers/video/Kconfig b/drivers/video/Kconfig
+index 3c3ceba..0b5f236 100644
+--- a/drivers/video/Kconfig
++++ b/drivers/video/Kconfig
+@@ -572,6 +572,14 @@ config VIDEO_LCD_RAYDIUM_RM68200
+ 	Say Y here if you want to enable support for Raydium RM68200
+ 	720x1280 DSI video mode panel.
+ 
++config VIDEO_LCD_JH550172Q
++	bool "JH550172Q DSI LCD panel support"
++	depends on PANEL && BACKLIGHT
++	select VIDEO_MIPI_DSI
++	help
++	  Say Y here if you want to enable support for the JH550172Q
++	  720x1280 DSI video mode panel used by Vivid Unit.
++
+ config VIDEO_LCD_RENESAS_R61307
+ 	tristate "Renesas R61307 DSI video mode panel"
+ 	depends on PANEL && BACKLIGHT
+diff --git a/drivers/video/Makefile b/drivers/video/Makefile
+index 5a00438..53feeec 100644
+--- a/drivers/video/Makefile
++++ b/drivers/video/Makefile
+@@ -61,6 +61,7 @@ obj-$(CONFIG_VIDEO_LCD_HITACHI_TX18D42VM) += hitachi_tx18d42vm_lcd.o
+ obj-$(CONFIG_VIDEO_LCD_LG_LD070WX3) += lg-ld070wx3.o
+ obj-$(CONFIG_VIDEO_LCD_ORISETECH_OTM8009A) += orisetech_otm8009a.o
+ obj-$(CONFIG_VIDEO_LCD_RAYDIUM_RM68200) += raydium-rm68200.o
++obj-$(CONFIG_VIDEO_LCD_JH550172Q) += jh550172q.o
+ obj-$(CONFIG_VIDEO_LCD_RENESAS_R61307) += renesas-r61307.o
+ obj-$(CONFIG_VIDEO_LCD_RENESAS_R69328) += renesas-r69328.o
+ obj-$(CONFIG_VIDEO_LCD_SAMSUNG_LTL106HL02) += samsung-ltl106hl02.o

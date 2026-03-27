@@ -1,0 +1,58 @@
+# boards/vivid-unit/board.toml
+
+name = "vivid-unit"
+soc  = "rk3399"
+arch = "arm64"
+
+[atf]
+ref      = "v2.13"
+url      = "https://github.com/ARM-software/arm-trusted-firmware.git"
+platform = "rk3399"
+target   = "bl31"
+
+[uboot]
+ref = "v2025.04"
+defconfig = "uboot/configs/vivid_unit_defconfig"
+device_tree = "rk3399-vivid-unit"
+dts = [
+  "boards/vivid-unit/dts/uboot/rk3399-vivid-unit.dts",
+]
+patch_dirs = [
+  "uboot/patches/v2025.04/vivid-unit",
+]
+overlay_dirs = [
+  "uboot/overlay/v2025.04/vivid-unit",
+]
+
+[kernel]
+version    = "6.12.73"
+release    = "6.12.73-vuos"
+defconfig  = "kernel/configs/vivid_unit_defconfig"
+dts        = [
+  "boards/vivid-unit/dts/kernel/rk3399-vivid-unit.dts",
+]
+
+# Where to fetch kernel sources
+[kernel.source]
+type = "git"
+url  = "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git"
+ref  = "v6.12.73"   # tag or commit
+
+# Patch directories applied in order
+patch_dirs = [
+  "kernel/patches/6.12.73/common",
+  "kernel/patches/6.12.73/vivid-unit",
+]
+
+[rootfs]
+suite   = "bookworm"
+variant = "minbase"
+
+# Overlay roots; each is treated as "/" when copied into rootfs
+common_overlay = "rootfs/common/overlay"
+suite_overlay  = "rootfs/suites/bookworm/overlay"
+board_overlay  = "boards/vivid-unit/rootfs-overlay"
+
+[pack]
+# Prefer extlinux boot partition for the raw image route.
+boot_format = "extlinux"

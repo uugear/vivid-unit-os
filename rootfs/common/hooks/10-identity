@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOTFS="${1:?missing rootfs dir}"
+
+VU_HOSTNAME="${VU_HOSTNAME:-vivid-unit}"
+
+echo "$VU_HOSTNAME" > "$ROOTFS/etc/hostname"
+cat > "$ROOTFS/etc/hosts" <<EOF_HOSTS
+127.0.0.1   localhost
+127.0.1.1   $VU_HOSTNAME
+::1         localhost ip6-localhost ip6-loopback
+EOF_HOSTS

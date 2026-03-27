@@ -1,0 +1,308 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ATTEMPTS="${VU_BT_ATTACH_ATTEMPTS:-8}"
+SETTLE_SEC="${VU_BT_SETTLE_SEC:-1}"
+SETTLE_STEPS="${VU_BT_SETTLE_STEPS:-12}"
+RETRY_SEC="${VU_BT_ATTACH_RETRY_SEC:-2}"
+PROTO="${VU_BT_PROTO:-bcm}"
+BTATTACH_BAUD="${VU_BT_BTATTACH_BAUD:-1500000}"
+READY_SENT=0
+child_pid=""
+UART_DEV=""
+RESET_ASSERTED=0
+
+BT_RESET_CHIP="${VU_BT_RESET_CHIP:-gpiochip0}"
+BT_RESET_LINE="${VU_BT_RESET_LINE:-9}"
+BT_WAKE_CHIP="${VU_BT_WAKE_CHIP:-gpiochip2}"
+BT_WAKE_LINE="${VU_BT_WAKE_LINE:-26}"
+BT_RESET_LOW_SEC="${VU_BT_RESET_LOW_SEC:-0.2}"
+BT_RESET_HIGH_SEC="${VU_BT_RESET_HIGH_SEC:-0.5}"
+
+log() {
+    echo "vu-btattach: $*"
+}
+
+sd_status() {
+    local msg="$*"
+    if command -v systemd-notify >/dev/null 2>&1; then
+        systemd-notify --status="$msg" >/dev/null 2>&1 || true
+    fi
+}
+
+notify_ready() {
+    if [[ "$READY_SENT" -eq 0 ]] && command -v systemd-notify >/dev/null 2>&1; then
+        systemd-notify --ready --status="Bluetooth controller attached"
+        READY_SENT=1
+    fi
+}
+
+cleanup_child() {
+    local rc=0
+    if [[ -n "${child_pid:-}" ]]; then
+        if kill -0 "$child_pid" 2>/dev/null; then
+            kill "$child_pid" 2>/dev/null || true
+        fi
+        wait "$child_pid" 2>/dev/null || rc=$?
+        child_pid=""
+    fi
+    return 0
+}
+
+stop_bt_stack() {
+    hciconfig hci0 down >/dev/null 2>&1 || true
+    cleanup_child || true
+    killall -q -9 btattach >/dev/null 2>&1 || true
+    sleep 0.2
+}
+
+bt_rfkill_nodes() {
+    grep -rl '^bluetooth$' /sys/class/rfkill/*/type 2>/dev/null | sed 's:/type$:/state:' || true
+}
+
+set_gpio_level() {
+    local chip="$1" line="$2" value="$3"
+    command -v gpioset >/dev/null 2>&1 || return 1
+    gpioset -m exit "$chip" "$line=$value" >/dev/null 2>&1
+}
+
+assert_reset_low() {
+    local did=0
+
+    if set_gpio_level "$BT_WAKE_CHIP" "$BT_WAKE_LINE" 0; then
+        log "set ${BT_WAKE_CHIP} line ${BT_WAKE_LINE} low"
+        did=1
+    fi
+
+    if set_gpio_level "$BT_RESET_CHIP" "$BT_RESET_LINE" 0; then
+        log "assert reset low via ${BT_RESET_CHIP} line ${BT_RESET_LINE}"
+        RESET_ASSERTED=1
+        did=1
+    fi
+
+    if [[ -w /proc/bluetooth/sleep/btwrite ]]; then
+        log "driving /proc/bluetooth/sleep/btwrite low"
+        echo 0 >/proc/bluetooth/sleep/btwrite || true
+        did=1
+    fi
+
+    while read -r node; do
+        [[ -n "$node" ]] || continue
+        if [[ -w "$node" ]]; then
+            log "toggling rfkill off via ${node}"
+            echo 0 >"$node" || true
+            did=1
+        fi
+    done < <(bt_rfkill_nodes)
+
+    [[ "$did" -eq 1 ]]
+}
+
+release_reset_high() {
+    local did=0
+
+    while read -r node; do
+        [[ -n "$node" ]] || continue
+        if [[ -w "$node" ]]; then
+            log "toggling rfkill on via ${node}"
+            echo 1 >"$node" || true
+            did=1
+        fi
+    done < <(bt_rfkill_nodes)
+
+    if [[ -w /proc/bluetooth/sleep/btwrite ]]; then
+        log "driving /proc/bluetooth/sleep/btwrite high"
+        echo 1 >/proc/bluetooth/sleep/btwrite || true
+        did=1
+    fi
+
+    if set_gpio_level "$BT_RESET_CHIP" "$BT_RESET_LINE" 1; then
+        log "release reset high via ${BT_RESET_CHIP} line ${BT_RESET_LINE}"
+        RESET_ASSERTED=0
+        did=1
+    fi
+
+    if set_gpio_level "$BT_WAKE_CHIP" "$BT_WAKE_LINE" 0; then
+        did=1
+    fi
+
+    if [[ "$did" -eq 0 ]]; then
+        rfkill unblock bluetooth >/dev/null 2>&1 || true
+    fi
+
+    [[ "$did" -eq 1 ]]
+}
+
+hard_reset_broadcom() {
+    local did=0
+
+    if assert_reset_low; then
+        did=1
+        sleep "$BT_RESET_LOW_SEC"
+    fi
+
+    if release_reset_high; then
+        did=1
+        sleep "$BT_RESET_HIGH_SEC"
+    fi
+
+    [[ "$did" -eq 1 ]]
+}
+
+controller_output() {
+    hciconfig -a hci0 2>/dev/null || true
+}
+
+controller_addr() {
+    sed -n 's/.*BD Address: \([0-9A-F:][0-9A-F:]*\).*/\1/p' <<<"$1" | head -n1
+}
+
+controller_common_healthy() {
+    local out="$1"
+    local addr
+    [[ -n "$out" ]] || return 1
+    grep -Eq '^hci0:' <<<"$out" || return 1
+    grep -Eq '^\s+UP RUNNING\b' <<<"$out" || return 1
+    grep -Eq 'ACL MTU: [1-9][0-9]*:[0-9]+' <<<"$out" || return 1
+    grep -Eqv '^\s*Features:( 0x00){8}\s*$' <<<"$out" || return 1
+    addr="$(controller_addr "$out")"
+    [[ -n "$addr" ]] || return 1
+    [[ "$addr" != "00:00:00:00:00:00" ]] || return 1
+    return 0
+}
+
+is_controller_healthy() {
+    local out
+    out="$(controller_output)"
+    controller_common_healthy "$out"
+}
+
+detect_uart_dev() {
+    if [[ -n "${VU_BT_UART_DEV:-}" ]]; then
+        echo "$VU_BT_UART_DEV"
+        return 0
+    fi
+
+    local dt_base="/sys/firmware/devicetree/base/pinctrl/wireless-bluetooth"
+    local hit=""
+    if [[ -d "$dt_base" ]]; then
+        hit="$(find "$dt_base" -maxdepth 2 \( -type d -o -type f \) -name 'uart*' -printf '%f\n' 2>/dev/null | grep -Eo '^uart[0-9]+' | head -n1 || true)"
+        if [[ -n "$hit" ]]; then
+            echo "/dev/ttyS${hit#uart}"
+            return 0
+        fi
+    fi
+
+    echo "/dev/ttyS0"
+}
+
+kernel_patch_ready() {
+    local candidate
+    for candidate in \
+        /usr/lib/firmware/brcm/BCM43430A1.rockchip,rk3399-vivid-unit.hcd \
+        /usr/lib/firmware/brcm/BCM43430A1.hcd \
+        /lib/firmware/brcm/BCM43430A1.rockchip,rk3399-vivid-unit.hcd \
+        /lib/firmware/brcm/BCM43430A1.hcd
+    do
+        [[ -r "$candidate" ]] && return 0
+    done
+    return 1
+}
+
+wait_for_uart() {
+    for _ in $(seq 1 20); do
+        [[ -e "$UART_DEV" ]] && return 0
+        sleep 0.5
+    done
+    return 1
+}
+
+ensure_hci_uart() {
+    modprobe hci_uart >/dev/null 2>&1 || true
+}
+
+start_btattach() {
+    ensure_hci_uart
+    stop_bt_stack
+    hard_reset_broadcom || log "no hard-reset control path available; continuing anyway"
+    log "btattach on ${UART_DEV} @ ${BTATTACH_BAUD}"
+    sd_status "Trying btattach on ${UART_DEV} @ ${BTATTACH_BAUD}"
+    /usr/bin/btattach -B "$UART_DEV" -S "$BTATTACH_BAUD" -P "$PROTO" &
+    child_pid=$!
+}
+
+run_btattach_path() {
+    start_btattach
+    for _ in $(seq 1 "$SETTLE_STEPS"); do
+        sleep "$SETTLE_SEC"
+        hciconfig hci0 up >/dev/null 2>&1 || true
+        if is_controller_healthy; then
+            log "controller attached successfully (btattach)"
+            return 0
+        fi
+        if ! kill -0 "$child_pid" 2>/dev/null; then
+            wait "$child_pid" 2>/dev/null || true
+            child_pid=""
+            return 1
+        fi
+    done
+
+    cleanup_child || true
+    return 1
+}
+
+hold_service() {
+    while true; do
+        sleep 30
+        if ! is_controller_healthy; then
+            log "controller health degraded after attach"
+            exit 1
+        fi
+    done
+}
+
+shutdown_reset() {
+    stop_bt_stack
+    if assert_reset_low; then
+        log "controller left in reset on service stop"
+    else
+        log "no reset control path available during service stop"
+    fi
+}
+
+trap 'shutdown_reset || true' EXIT INT TERM
+
+UART_DEV="$(detect_uart_dev)"
+
+log "selected UART device: ${UART_DEV}"
+if kernel_patch_ready; then
+    log "kernel Broadcom firmware patch is present; using btattach + kernel init path"
+else
+    log "kernel Broadcom firmware patch is absent; trying btattach without .hcd patch"
+fi
+
+wait_for_uart || {
+    log "UART device not present: ${UART_DEV}"
+    exit 1
+}
+
+for attempt in $(seq 1 "$ATTEMPTS"); do
+    log "attach cycle ${attempt}/${ATTEMPTS}"
+    sd_status "Bluetooth attach cycle ${attempt}/${ATTEMPTS}"
+
+    if run_btattach_path; then
+        notify_ready
+        if [[ -n "$child_pid" ]] && kill -0 "$child_pid" 2>/dev/null; then
+            wait "$child_pid"
+            exit $?
+        fi
+        hold_service
+    fi
+
+    log "attach cycle ${attempt}/${ATTEMPTS} failed; retrying in ${RETRY_SEC}s"
+    stop_bt_stack
+    sleep "$RETRY_SEC"
+done
+
+log "failed to attach a healthy Bluetooth controller"
+exit 1

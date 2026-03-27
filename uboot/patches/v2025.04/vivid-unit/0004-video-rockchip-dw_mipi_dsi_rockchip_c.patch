@@ -1,0 +1,208 @@
+--- a/drivers/video/rockchip/dw_mipi_dsi_rockchip.c
++++ b/drivers/video/rockchip/dw_mipi_dsi_rockchip.c
+@@ -24,15 +24,20 @@
+ #include <dm/lists.h>
+ #include <linux/iopoll.h>
+ 
++
+ #include <log.h>
+ #include <video.h>
++#include <stdio.h>
++#include <asm/io.h>
+ #include <dm/device-internal.h>
+ #include <linux/bitops.h>
+-#include <linux/time.h>
+ 
+ #include <asm/arch-rockchip/clock.h>
+ #include <asm/arch-rockchip/hardware.h>
+ 
++#define USEC_PER_SEC	1000000UL
++#define MSEC_PER_SEC	1000UL
++
+ /*
+  * DSI wrapper registers & bit definitions
+  * Note: registers are named as in the Reference Manual
+@@ -242,6 +247,10 @@
+ 	struct udevice *dsi_host;
+ };
+ 
++static void dw_mipi_dsi_rockchip_config(struct dw_rockchip_dsi_priv *dsi);
++static void dw_mipi_dsi_rockchip_apply_lcdsel(struct dw_rockchip_dsi_priv *dsi,
++				    struct udevice *dev);
++
+ static inline void dsi_write(struct dw_rockchip_dsi_priv *dsi, u32 reg, u32 val)
+ {
+ 	writel(val, dsi->base + reg);
+@@ -374,7 +383,7 @@
+ 	struct dw_rockchip_dsi_priv *dsi = dev_get_priv(dev);
+ 	int ret, i, vco;
+ 
+-	if (generic_phy_valid(&dsi->phy)) {
++	if (dsi->phy.dev) {
+ 		ret = generic_phy_configure(&dsi->phy, &dsi->phy_opts);
+ 		if (ret) {
+ 			dev_err(dsi->dsi_host,
+@@ -499,8 +508,14 @@
+ 	struct udevice *dev = device->dev;
+ 	struct dw_rockchip_dsi_priv *dsi = dev_get_priv(dev);
+ 
+-	dev_dbg(dev, "Set mode %p enable %ld\n", dsi,
+-		mode_flags & MIPI_DSI_MODE_VIDEO);
++	printf("dw-mipi-dsi-rockchip: post_set_mode req_flags=%#lx device_flags=%#lx video=%u burst=%u lpm=%u lane_mbps=%u wcr_before=%#x\n",
++	       mode_flags,
++	       device ? device->mode_flags : 0,
++	       (unsigned int)!!(mode_flags & MIPI_DSI_MODE_VIDEO),
++	       (unsigned int)!!(mode_flags & MIPI_DSI_MODE_VIDEO_BURST),
++	       (unsigned int)!!(mode_flags & MIPI_DSI_MODE_LPM),
++	       dsi ? dsi->lane_mbps : 0,
++	       dsi ? dsi_read(dsi, DSI_WCR) : 0);
+ 
+ 	if (!dsi)
+ 		return;
+@@ -516,6 +531,16 @@
+ 		dsi_set(dsi, DSI_WCR, WCR_DSIEN);
+ 	else
+ 		dsi_clear(dsi, DSI_WCR, WCR_DSIEN);
++	printf("dw-mipi-dsi-rockchip: post_set_mode wcr_after=%#x\n",
++	       dsi_read(dsi, DSI_WCR));
++	if ((mode_flags & MIPI_DSI_MODE_VIDEO) && dsi_read(dsi, DSI_WCR) == 0) {
++		printf("dw-mipi-dsi-rockchip: WCR stayed 0, reapplying GRF config + lcdsel and retrying\n");
++		dw_mipi_dsi_rockchip_config(dsi);
++		dw_mipi_dsi_rockchip_apply_lcdsel(dsi, dev);
++		dsi_write(dsi, DSI_WCR, WCR_DSIEN);
++		printf("dw-mipi-dsi-rockchip: post_set_mode second_wcr_after=%#x\n",
++		       dsi_read(dsi, DSI_WCR));
++	}
+ }
+ 
+ static int
+@@ -526,8 +551,6 @@
+ 	struct udevice *dev = device->dev;
+ 	struct dw_rockchip_dsi_priv *dsi = dev_get_priv(dev);
+ 	int bpp;
+-	unsigned long mpclk, tmp;
+-	unsigned int target_mbps = 1000;
+ 	unsigned int max_mbps = dppa_map[ARRAY_SIZE(dppa_map) - 1].max_mbps;
+ 	unsigned long best_freq = 0;
+ 	unsigned long fvco_min, fvco_max, fin, fout;
+@@ -544,30 +567,32 @@
+ 		return bpp;
+ 	}
+ 
+-	mpclk = DIV_ROUND_UP(timings->pixelclock.typ, 1000);
+-	if (mpclk) {
+-		/* take 1 / 0.8, since mbps must big than bandwidth of RGB */
+-		tmp = (mpclk * (bpp / lanes) * 10 / 8) / 1000;
+-		if (tmp < max_mbps)
+-			target_mbps = tmp;
+-		else
+-			dev_err(dsi->dsi_host,
+-				"DPHY clock frequency is out of range\n");
+-	}
++	fout = timings->pixelclock.typ / MSEC_PER_SEC * bpp / lanes;
++	if (device->mode_flags & MIPI_DSI_MODE_VIDEO_BURST)
++		fout = fout * 12 / 10;
++	fout *= MSEC_PER_SEC;
++
++	printf("dw-mipi-dsi-rockchip: get_lane_mbps pixclock=%u lanes=%u format=%u mode_flags=%#lx computed_fout=%lu\n",
++	       timings->pixelclock.typ, lanes, format, device->mode_flags, fout);
++
++	if (fout > max_mbps * USEC_PER_SEC) {
++		dev_err(dsi->dsi_host, "DPHY clock frequency is out of range\n");
++		return -EINVAL;
++ 	}
+ 
+ 	/* for external phy only the mipi_dphy_config is necessary */
+-	if (generic_phy_valid(&dsi->phy)) {
+-		phy_mipi_dphy_get_default_config(timings->pixelclock.typ  * 10 / 8,
++	if (dsi->phy.dev) {
++		phy_mipi_dphy_get_default_config(fout / bpp * lanes,
+ 						 bpp, lanes,
+ 						 &dsi->phy_opts);
+-		dsi->lane_mbps = target_mbps;
++		dsi->lane_mbps = DIV_ROUND_UP(fout, USEC_PER_SEC);
+ 		*lane_mbps = dsi->lane_mbps;
++		printf("dw-mipi-dsi-rockchip: external phy lane_mbps=%u\n", dsi->lane_mbps);
+ 
+ 		return 0;
+ 	}
+ 
+ 	fin = clk_get_rate(dsi->ref);
+-	fout = target_mbps * USEC_PER_SEC;
+ 
+ 	/* constraint: 5Mhz <= Fref / N <= 40MHz */
+ 	min_prediv = DIV_ROUND_UP(fin, 40 * USEC_PER_SEC);
+@@ -791,6 +816,34 @@
+ 		rk_setreg(dsi->grf + dsi->cdata->enable_grf_reg, dsi->cdata->enable);
+ }
+ 
++static void dw_mipi_dsi_rockchip_apply_lcdsel(struct dw_rockchip_dsi_priv *dsi,
++					    struct udevice *dev)
++{
++	bool force_vopb = dev_read_bool(dev, "vivid-unit,force-vopb-lcdc");
++	bool force_vopl = dev_read_bool(dev, "vivid-unit,force-vopl-lcdc");
++	u32 before, after, val;
++
++	if (!dsi->cdata->lcdsel_grf_reg)
++		return;
++
++	before = readl(dsi->grf + dsi->cdata->lcdsel_grf_reg);
++	if (force_vopb)
++		val = dsi->cdata->lcdsel_big;
++	else if (force_vopl)
++		val = dsi->cdata->lcdsel_lit;
++	else {
++		printf("dw-mipi-dsi-rockchip: lcdsel unchanged reg=%#x before=%#x\n",
++		       dsi->cdata->lcdsel_grf_reg, before);
++		return;
++	}
++
++	rk_setreg(dsi->grf + dsi->cdata->lcdsel_grf_reg, val);
++	after = readl(dsi->grf + dsi->cdata->lcdsel_grf_reg);
++	printf("dw-mipi-dsi-rockchip: lcdsel override=%s reg=%#x write=%#x before=%#x after=%#x\n",
++	       force_vopb ? "vopb/big" : "vopl/lit",
++	       dsi->cdata->lcdsel_grf_reg, val, before, after);
++}
++
+ static int dw_mipi_dsi_rockchip_bind(struct udevice *dev)
+ {
+ 	int ret;
+@@ -838,15 +891,7 @@
+ 		return -EINVAL;
+ 	}
+ 
+-	/*
+-	 * Get an optional external dphy. The external dphy stays as
+-	 * NULL if it's not initialized.
+-	 */
+-	ret = generic_phy_get_by_name(dev, "dphy", &priv->phy);
+-	if (ret && ret != -ENODATA) {
+-		dev_err(dev, "failed to get mipi dphy: %d\n", ret);
+-		return ret;
+-	}
++
+ 
+ 	priv->pclk = devm_clk_get(dev, "pclk");
+ 	if (IS_ERR(priv->pclk)) {
+@@ -856,7 +901,7 @@
+ 	}
+ 
+ 	/* Get a ref clock only if not using an external phy. */
+-	if (generic_phy_valid(&priv->phy)) {
++	if (priv->phy.dev) {
+ 		dev_dbg(dev, "setting priv->ref to NULL\n");
+ 		priv->ref = NULL;
+ 
+@@ -902,6 +947,7 @@
+ 	reset_deassert(priv->rst);
+ 
+ 	dw_mipi_dsi_rockchip_config(priv);
++	dw_mipi_dsi_rockchip_apply_lcdsel(priv, dev);
+ 
+ 	return 0;
+ }
+@@ -998,3 +1044,4 @@
+ 	.ops			= &dw_mipi_dsi_rockchip_ops,
+ 	.priv_auto		= sizeof(struct dw_rockchip_dsi_priv),
+ };
++

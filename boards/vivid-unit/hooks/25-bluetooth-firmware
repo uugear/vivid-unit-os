@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOTFS="${1:?missing rootfs dir}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BOARD_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# This hook installs the Broadcom BT firmware blob used by the btattach + kernel Broadcom init path.
+for cand in \
+    "$BOARD_DIR/firmware/BCM4343A1.hcd" \
+    "$BOARD_DIR/firmware/brcm/BCM4343A1.hcd"
+do
+    if [[ -f "$cand" ]]; then
+        fwdir="$ROOTFS/usr/lib/firmware/brcm"
+        install -d "$fwdir"
+        install -m 0644 "$cand" "$fwdir/BCM4343A1.hcd"
+        install -m 0644 "$cand" "$fwdir/BCM43430A1.hcd"
+        install -m 0644 "$cand" "$fwdir/BCM43430A1.rockchip,rk3399-vivid-unit.hcd"
+        install -m 0644 "$cand" "$fwdir/BCM.rockchip,rk3399-vivid-unit.hcd"
+        install -m 0644 "$cand" "$fwdir/BCM.hcd"
+        exit 0
+    fi
+done
+
+echo "25-bluetooth-firmware: firmware blob not found; skipping BT .hcd install" >&2

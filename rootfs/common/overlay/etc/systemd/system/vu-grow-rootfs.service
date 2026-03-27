@@ -1,0 +1,12 @@
+[Unit]
+Description=Vivid Unit: Grow rootfs partition/filesystem on first boot
+After=systemd-remount-fs.service local-fs.target
+Before=multi-user.target
+ConditionPathExists=!/var/lib/vu-grow-rootfs.done
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/vu-grow-rootfs
+
+[Install]
+WantedBy=multi-user.target

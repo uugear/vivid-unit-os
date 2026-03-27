@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOTFS="${1:?missing rootfs dir}"
+
+VU_APT_ENABLE="${VU_APT_ENABLE:-1}"
+VU_APT_URL="${VU_APT_URL:-https://vividunit.com/apt}"
+VU_APT_SUITE="${VU_APT_SUITE:-bookworm}"
+VU_APT_COMPONENTS="${VU_APT_COMPONENTS:-main}"
+VU_APT_KEYRING_URL="${VU_APT_KEYRING_URL:-https://vividunit.com/apt/public/vividunit-archive-keyring.gpg}"
+VU_APT_KEYRING_PATH="/usr/share/keyrings/vividunit-archive-keyring.gpg"
+VU_APT_INSTALL_PKGS="${VU_APT_INSTALL_PKGS:-vgp vsa vtest}"
+
+# Debian APT sources are provided via suite overlay (etc/apt/sources.list),
+# which includes non-free-firmware.
+
+if [[ "$VU_APT_ENABLE" != "1" ]]; then
+  exit 0
+fi
+
+install -d "$ROOTFS/usr/share/keyrings" "$ROOTFS/etc/apt/sources.list.d"
+
+# Fetch keyring inside chroot
+chroot "$ROOTFS" /bin/bash -lc "set -euo pipefail
+export PATH=/usr/sbin:/sbin:\$PATH
+export DEBIAN_FRONTEND=noninteractive
+curl -fsSL "$VU_APT_KEYRING_URL" -o "$VU_APT_KEYRING_PATH"
+chmod 0644 "$VU_APT_KEYRING_PATH"
+"
+
+cat > "$ROOTFS/etc/apt/sources.list.d/vividunit.list" <<EOF_LIST
+deb [signed-by=$VU_APT_KEYRING_PATH] $VU_APT_URL $VU_APT_SUITE $VU_APT_COMPONENTS
+EOF_LIST
+chmod 0644 "$ROOTFS/etc/apt/sources.list.d/vividunit.list"
+
+if [[ -n "$VU_APT_INSTALL_PKGS" ]]; then
+  chroot "$ROOTFS" /bin/bash -lc "set -euo pipefail
+export PATH=/usr/sbin:/sbin:\$PATH
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y --no-install-recommends $VU_APT_INSTALL_PKGS
+"
+fi
+
+systemctl --root="$ROOTFS" enable vgpd.socket >/dev/null 2>&1 || true
+systemctl --root="$ROOTFS" enable vsa.service >/dev/null 2>&1 || true

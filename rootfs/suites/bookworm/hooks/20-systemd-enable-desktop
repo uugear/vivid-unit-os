@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOTFS="${1:?missing rootfs dir}"
+
+systemctl --root="$ROOTFS" enable lightdm >/dev/null 2>&1 || true

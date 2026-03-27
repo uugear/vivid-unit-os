@@ -1,0 +1,12 @@
+[Unit]
+Description=Vivid Unit ALSA init for ES8316 (set mixers & store state)
+After=multi-user.target
+ConditionPathExists=/proc/asound/cards
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/vu-alsa-init-es8316
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

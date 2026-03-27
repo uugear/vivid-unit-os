@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+CARD_ID="rockchipes8316c"
+for i in {1..200}; do
+  if grep -q "\[$CARD_ID\]" /proc/asound/cards 2>/dev/null; then
+    break
+  fi
+  sleep 0.1
+done
+CARD_NUM="$(awk -v id="$CARD_ID" '$0 ~ "\\["id"\\]" {print $1}' /proc/asound/cards | tr -d '[]')"
+[ -n "${CARD_NUM:-}" ] || exit 0
+amixer -c "$CARD_NUM" sset Speaker on || true
+amixer -c "$CARD_NUM" sset "Left Headphone Mixer Left DAC" on || true
+amixer -c "$CARD_NUM" sset "Right Headphone Mixer Right DAC" on || true
+amixer -c "$CARD_NUM" sset DAC 100% || true
+amixer -c "$CARD_NUM" sset Headphone 100% || true

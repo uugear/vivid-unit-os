@@ -1,0 +1,2 @@
+# Allow members of group "gpio" to access gpiochip character devices (libgpiod)
+SUBSYSTEM=="gpio", KERNEL=="gpiochip*", GROUP="gpio", MODE="0660"

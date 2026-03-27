@@ -1,0 +1,17 @@
+[Unit]
+Description=Initialize Broadcom Bluetooth UART
+After=systemd-udev-settle.service local-fs.target vu-unblock-bluetooth.service
+Wants=systemd-udev-settle.service vu-unblock-bluetooth.service
+Before=bluetooth.service
+
+[Service]
+Type=notify
+NotifyAccess=main
+ExecStartPre=/sbin/modprobe bluetooth
+ExecStart=/usr/local/sbin/vu-btattach
+Restart=on-failure
+RestartSec=2
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

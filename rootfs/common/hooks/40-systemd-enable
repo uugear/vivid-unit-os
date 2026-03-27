@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOTFS="${1:?missing rootfs dir}"
+
+# Enable essential services inside the rootfs (no need to boot it)
+systemctl --root="$ROOTFS" enable ssh >/dev/null 2>&1 || true
+systemctl --root="$ROOTFS" enable NetworkManager >/dev/null 2>&1 || true
+systemctl --root="$ROOTFS" enable bluetooth >/dev/null 2>&1 || true

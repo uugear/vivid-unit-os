@@ -1,0 +1,53 @@
+# Base packages common to all builds (headless + core system)
+# One package per line; comments and empty lines are ignored.
+
+sudo
+ca-certificates
+locales
+tzdata
+
+# Core OS / session glue
+policykit-1
+rtkit
+dbus
+dbus-user-session
+dbus-x11
+accountsservice
+
+# Networking / remote access
+openssh-server
+network-manager
+wpasupplicant
+wireless-tools
+iw
+iproute2
+curl
+rfkill
+
+# Bluetooth (daemon); GUI manager is in packages.desktop
+bluez
+
+# Timekeeping
+systemd-timesyncd
+fake-hwclock
+
+# Hardware / maintenance tools
+rsync
+parted
+e2fsprogs
+cloud-guest-utils
+
+# GPIO/I2C tools
+gpiod
+i2c-tools
+
+# Debug / convenience
+kbd
+less
+vim
+htop
+nano
+hdparm
+
+# Accessibility (needed by some desktop components, harmless headless)
+at-spi2-core

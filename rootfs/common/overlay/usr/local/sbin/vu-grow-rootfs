@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+exec >>/var/log/vu-grow-rootfs.log 2>&1
+echo "=== $(date -Is) vu-grow-rootfs start ==="
+
+done_file=/var/lib/vu-grow-rootfs.done
+mkdir -p /var/lib
+if [[ -e "$done_file" ]]; then
+  echo "done file exists, skip"
+  exit 0
+fi
+
+root_dev="$(findmnt -n -o SOURCE /)"
+root_dev="$(readlink -f "$root_dev" || true)"
+echo "root_dev=$root_dev"
+
+[[ -n "$root_dev" && -b "$root_dev" ]] || { echo "No valid root_dev, exit"; exit 0; }
+
+disk="/dev/$(lsblk -no PKNAME "$root_dev" 2>/dev/null || true)"
+devbase="$(basename "$root_dev")"
+pnum="$(cat "/sys/class/block/$devbase/partition" 2>/dev/null || true)"
+echo "disk=$disk pnum=$pnum"
+
+[[ -b "$disk" && -n "$pnum" ]] || { echo "No valid disk/partnum, exit"; exit 0; }
+
+udevadm settle || true
+growpart "$disk" "$pnum" || echo "growpart: no change or failed (continuing)"
+partprobe "$disk" || true
+udevadm settle || true
+resize2fs "$root_dev"
+
+touch "$done_file"
+
+echo "=== $(date -Is) vu-grow-rootfs done ==="

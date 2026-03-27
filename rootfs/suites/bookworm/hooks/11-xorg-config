@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOTFS="${1:?missing rootfs dir}"
+
+XORG_DRIVER="${XORG_DRIVER:-modesetting}"
+
+install -d "$ROOTFS/etc/X11/xorg.conf.d"
+if [[ "$XORG_DRIVER" == "fbdev" ]]; then
+  cat > "$ROOTFS/etc/X11/xorg.conf.d/20-vu-fbdev.conf" <<'EOF_FB'
+Section "Device"
+    Identifier "VU-FBDEV"
+    Driver "fbdev"
+    Option "fbdev" "/dev/fb0"
+EndSection
+EOF_FB
+else
+  cat > "$ROOTFS/etc/X11/xorg.conf.d/20-vu-kms.conf" <<'EOF_KMS'
+Section "Device"
+    Identifier "VU-KMS"
+    Driver "modesetting"
+    Option "PrimaryGPU" "true"
+    Option "DRI" "3"
+EndSection
+EOF_KMS
+fi

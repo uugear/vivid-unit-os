@@ -1,0 +1,27 @@
+[Unit]
+Description=x11vnc for X11 display :0
+After=display-manager.service
+Wants=display-manager.service
+
+[Service]
+Type=simple
+User=root
+
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 60); do [ -S /tmp/.X11-unix/X0 ] && [ -e /var/run/lightdm/root/:0 ] && exit 0; sleep 0.5; done; exit 1'
+
+ExecStart=/usr/bin/x11vnc \
+  -display :0 \
+  -auth /var/run/lightdm/root/:0 \
+  -forever \
+  -noxdamage \
+  -norepeat \
+  -noxrandr \
+  -rfbauth /etc/x11vnc/passwd \
+  -rfbport 5900 \
+  -shared
+
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
