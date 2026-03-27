@@ -90,7 +90,7 @@ Alternatively you may build everything with just one command:
 ```bash
 sudo ./vuos build vivid-unit
 ```
-At the end of building you will get an image file named vuos-yyyymmdd-N.img, where yyyymmdd is the date and N is the serial number of the build. 
+At the end of building you will get an image file named vuos-YYYYMMDD-N.img, where YYYYMMDD is the date and N is the serial number of the build. 
 
 The exact workflow may evolve as the project is refined.
 
@@ -98,7 +98,7 @@ The exact workflow may evolve as the project is refined.
 You can flash the OS image into Vivid Unit with [rkdeveloptool](https://github.com/rockchip-linux/rkdeveloptool):
 ```bash
 rkdeveloptool db rk3399_loader_v1.30.130.bin
-rkdeveloptool wl 0x00 [vuos-yyyymmdd-N.img]
+rkdeveloptool wl 0x00 [vuos-YYYYMMDD-N.img]
 ```
 The rk3399_loader_v1.30.130.bin file can be found in boards/vivid-unit/rkbin directory.
 
