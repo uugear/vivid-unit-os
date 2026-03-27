@@ -1,7 +1,7 @@
 # vivid-unit-os
 # Vivid Unit OS Build System
 
-An open build system for generating a Debian-based operating system for **Vivid Unit** devices.
+An open build system for generating Vivid Unit OS (a Debian-based operating system) for **Vivid Unit** devices.
 
 This project aims to replace the previous Rockchip SDK-based workflow with a cleaner, more maintainable, and more upstream-oriented build system based on:
 
@@ -90,7 +90,17 @@ Alternatively you may build everything with just one command:
 ```bash
 sudo ./vuos build vivid-unit
 ```
+At the end of building you will get an image file named vuos-yyyymmdd-N.img, where yyyymmdd is the date and N is the serial number of the build. 
+
 The exact workflow may evolve as the project is refined.
+
+# Flash the OS Image into Vivid Unit
+You can flash the OS image into Vivid Unit with [rkdeveloptool](https://github.com/rockchip-linux/rkdeveloptool):
+```bash
+rkdeveloptool db rk3399_loader_v1.30.130.bin
+rkdeveloptool wl 0x00 [vuos-yyyymmdd-N.img]
+```
+The rk3399_loader_v1.30.130.bin file can be found in boards/vivid-unit/rkbin directory.
 
 ## Third-Party Binary Blobs
 This repository currently includes a small number of third-party binary blobs that are still required for the Vivid Unit platform. These files come from the historical vendor-based workflow, are kept only as a practical transitional measure, and are not covered by the main repository license unless explicitly stated otherwise. The main license applies to the build system itself; third-party blobs remain subject to their own origin and terms. This project does not claim that all such components have already been replaced by clean upstream alternatives, and they will be removed or replaced over time whenever technically feasible.
