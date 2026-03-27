@@ -55,7 +55,28 @@ Typical top-level structure:
 Build outputs, fetched source trees and caches are kept under `out/`.
 
 ## Typical Build Flow
+Building can be done in a Debian based system (Debian 13 is preferred).
 
+Install required packages first:
+```bash
+sudo apt update
+sudo apt install -y \
+  build-essential \
+  git patch \
+  python3 python3-pyelftools \
+  swig \
+  device-tree-compiler \
+  rsync \
+  mmdebstrap \
+  e2fsprogs \
+  gawk \
+  gcc-aarch64-linux-gnu \
+  bc bison flex \
+  libssl-dev openssl \
+  ca-certificates \
+  python3-setuptools python3-dev \
+  qemu-user-static binfmt-support
+```
 A typical build flow looks like this:
 
 ```bash
