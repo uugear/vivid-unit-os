@@ -94,8 +94,15 @@ At the end of building you will get an image file named vuos-YYYYMMDD-N.img, whe
 
 The exact workflow may evolve as the project is refined.
 
-# Flash the OS Image into Vivid Unit
-You can flash the OS image into Vivid Unit with [rkdeveloptool](https://github.com/rockchip-linux/rkdeveloptool):
+## Flash the OS Image into Vivid Unit
+After putting your Vivid Unit into MASKROM mode, you can flash the OS image into it with [rkdeveloptool](https://github.com/rockchip-linux/rkdeveloptool).
+### Put Vivid Unit into MASKROM mode
+Connect your Vivid Unit to your computer via an USB type-C cable. You press and hold the small MASKROM button in the middle of Vivid Unit's circuit board (do not release it) and then press the power button (also do not release it) for about 5 seconds. After releasing both buttons your Vivid Unit enters MASROM mode, and you can see it with this command:
+```bash
+rkdeveloptool ld
+```
+If your Vivid Unit is not listed, repeat this step.
+### Do the Flashing
 ```bash
 rkdeveloptool db rk3399_loader_v1.30.130.bin
 rkdeveloptool wl 0x00 [vuos-YYYYMMDD-N.img]
