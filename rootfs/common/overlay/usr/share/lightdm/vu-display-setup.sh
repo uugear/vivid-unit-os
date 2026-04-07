@@ -43,12 +43,70 @@ esac
 
 echo "=== $(date -Is) ROTATION=$ROTATION ANGLE=$ANGLE XR=$XR M=$M DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY ==="
 
-mapfile -t CONNECTED_OUTPUTS < <(xrandr --query | grep " connected" | awk '{print $1}')
-for OUTPUT in "${CONNECTED_OUTPUTS[@]}"; do
-    if ! xrandr --output "$OUTPUT" --rotate "$XR"; then
-        echo "WARN: xrandr rotate failed for output '$OUTPUT'"
+get_connected_outputs() {
+    xrandr --query | awk '/ connected/{print $1}'
+}
+
+first_matching_output() {
+    local pattern="$1"
+    awk -v pat="$pattern" '$0 ~ pat {print; exit}'
+}
+
+run_xrandr() {
+    echo "+ xrandr $*"
+    xrandr "$@"
+}
+
+configure_outputs() {
+    mapfile -t CONNECTED_OUTPUTS < <(get_connected_outputs)
+
+    local dsi_output=""
+    local hdmi_output=""
+
+    dsi_output="$(printf '%s
+' "${CONNECTED_OUTPUTS[@]:-}" | first_matching_output '^DSI-')"
+    hdmi_output="$(printf '%s
+' "${CONNECTED_OUTPUTS[@]:-}" | first_matching_output '^HDMI-')"
+
+    echo "Connected outputs: ${CONNECTED_OUTPUTS[*]:-(none)}"
+    echo "Selected DSI output: ${dsi_output:-<none>}"
+    echo "Selected HDMI output: ${hdmi_output:-<none>}"
+
+    # Keep all non-DSI outputs unrotated.
+    for OUTPUT in "${CONNECTED_OUTPUTS[@]}"; do
+        if [[ "$OUTPUT" == "$dsi_output" ]]; then
+            continue
+        fi
+        if ! run_xrandr --output "$OUTPUT" --rotate normal; then
+            echo "WARN: xrandr rotate failed for output '$OUTPUT' -> normal"
+        fi
+    done
+
+    if [[ -n "$dsi_output" && -n "$hdmi_output" ]]; then
+        echo "HDMI detected together with DSI; force 1280x720 mirror and avoid HDMI 4K preferred mode"
+
+        if run_xrandr             --fb 1280x720             --output "$dsi_output" --primary --mode 720x1280 --rotate "$XR" --pos 0x0             --output "$hdmi_output" --mode 1280x720 --rate 60 --rotate normal --same-as "$dsi_output"; then
+            echo "Applied HDMI mirror at 1280x720@60"
+            return 0
+        fi
+
+        echo "WARN: 1280x720@60 mirror failed, retry without explicit refresh rate"
+        if run_xrandr             --fb 1280x720             --output "$dsi_output" --primary --mode 720x1280 --rotate "$XR" --pos 0x0             --output "$hdmi_output" --mode 1280x720 --rotate normal --same-as "$dsi_output"; then
+            echo "Applied HDMI mirror at 1280x720"
+            return 0
+        fi
+
+        echo "WARN: forced HDMI mirror failed, falling back to per-output rotation only"
     fi
-done
+
+    if [[ -n "$dsi_output" ]]; then
+        if ! run_xrandr --output "$dsi_output" --mode 720x1280 --rotate "$XR"; then
+            echo "WARN: xrandr rotate/mode failed for output '$dsi_output'"
+        fi
+    fi
+}
+
+configure_outputs
 
 mapfile -t POINTER_DEVICES < <(xinput list --short | grep -iE 'goodix|touch' | grep 'pointer' | grep -oP 'id=\K\d+')
 for TOUCH in "${POINTER_DEVICES[@]:-}"; do

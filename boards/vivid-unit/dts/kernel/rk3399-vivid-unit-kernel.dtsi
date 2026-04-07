@@ -298,7 +298,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&hdmi_i2c_xfer>, <&hdmi_cec>;
 	#sound-dai-cells = <0>;
-	status = "disabled";
+	status = "okay";
 };
 
 &pcie_phy {
@@ -378,9 +378,8 @@
 
 
 /*
- * Linux runtime should keep the display route conservative and close to the
- * previously known-good DTB: route DSI from VOPL, while leaving VOPB enabled
- * for the rest of the display subsystem.
+ * Keep the built-in portrait panel on VOPL -> DSI, and restore the external
+ * display path on VOPB -> HDMI so Linux can expose both connectors.
  */
 &display_subsystem {
 	status = "okay";
@@ -389,6 +388,11 @@
 		route_dsi: route-dsi {
 			status = "okay";
 			connect = <&vopl_out_mipi>;
+		};
+
+		route_hdmi: route-hdmi {
+			status = "okay";
+			connect = <&vopb_out_hdmi>;
 		};
 	};
 };
