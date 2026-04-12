@@ -15,13 +15,15 @@ ExecStart=/usr/bin/x11vnc \
   -forever \
   -noxdamage \
   -norepeat \
-  -noxrandr \
+  -xrandr resize \
   -rfbauth /etc/x11vnc/passwd \
   -rfbport 5900 \
   -shared
 
 Restart=on-failure
 RestartSec=2
+TimeoutStopSec=3s
+KillSignal=SIGKILL
 
 [Install]
 WantedBy=multi-user.target
