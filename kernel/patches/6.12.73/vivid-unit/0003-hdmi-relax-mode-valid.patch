@@ -1,0 +1,28 @@
+diff --git a/drivers/gpu/drm/rockchip/dw_hdmi-rockchip.c b/drivers/gpu/drm/rockchip/dw_hdmi-rockchip.c
+index 1111111..2222222 100644
+--- a/drivers/gpu/drm/rockchip/dw_hdmi-rockchip.c
++++ b/drivers/gpu/drm/rockchip/dw_hdmi-rockchip.c
+@@ -260,12 +260,13 @@ dw_hdmi_rockchip_mode_valid(struct dw_hdmi *dw_hdmi, void *data,
+ 	if (hdmi->chip_data->max_tmds_clock &&
+ 	    mode->clock > hdmi->chip_data->max_tmds_clock)
+ 		return MODE_CLOCK_HIGH;
+ 
+-	if (hdmi->ref_clk) {
+-		int rpclk = clk_round_rate(hdmi->ref_clk, pclk);
+-
+-		if (abs(rpclk - pclk) > pclk / 1000)
+-			return MODE_NOCLOCK;
+-	}
++	/*
++	 * Be permissive here. Some small HDMI panels expose unusual EDID timings
++	 * such as 1024x600@49MHz. These can still work on RK3399 even when the
++	 * rounded reference clock is not within the strict 0.1% tolerance that
++	 * this driver previously required. Keep the MPLL table based validation
++	 * below, but do not reject the mode early with MODE_NOCLOCK.
++	 */
+ 
+ 	for (i = 0; mpll_cfg[i].mpixelclock != (~0UL); i++) {
+ 		/*
+ 		 * For vendor specific phys force an exact match of the pixelclock
+-- 
+2.39.5
