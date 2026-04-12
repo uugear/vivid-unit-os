@@ -39,8 +39,8 @@ static const struct display_timing jh550172q_timing = {
 	.hback_porch.typ	= 50,
 	.hsync_len.typ		= 50,
 	.vactive.typ		= 1280,
-	.vfront_porch.typ	= 4,
-	.vback_porch.typ	= 10,
+	.vfront_porch.typ	= 10,
+	.vback_porch.typ	= 4,
 	.vsync_len.typ		= 4,
 	.flags			= DISPLAY_FLAGS_HSYNC_LOW | DISPLAY_FLAGS_VSYNC_LOW,
 };
