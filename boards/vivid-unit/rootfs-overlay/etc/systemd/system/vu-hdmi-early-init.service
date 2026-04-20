@@ -1,0 +1,16 @@
+[Unit]
+Description=Enable HDMI overlay and rebind rockchip DRM before display manager
+After=local-fs.target systemd-modules-load.service systemd-udev-trigger.service
+Before=display-manager.service
+ConditionPathExists=/usr/lib/vuos/overlays/rk3399-vivid-unit-hdmi.dtbo
+ConditionPathExists=/sys/bus/platform/drivers/rockchip-drm/unbind
+ConditionPathExists=/sys/bus/platform/drivers/rockchip-drm/bind
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/vu-hdmi-early-init
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=graphical.target

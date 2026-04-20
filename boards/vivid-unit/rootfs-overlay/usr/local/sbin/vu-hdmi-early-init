@@ -1,0 +1,79 @@
+#!/bin/sh
+set -eu
+
+LOG_TAG="vu-hdmi-early"
+DTBO="/usr/lib/vuos/overlays/rk3399-vivid-unit-hdmi.dtbo"
+CFG="/sys/kernel/config"
+OVDIR="$CFG/device-tree/overlays/vu-hdmi"
+
+log() {
+    logger -t "$LOG_TAG" "$*"
+    echo "$LOG_TAG: $*"
+}
+
+[ -f "$DTBO" ] || {
+    log "DTBO not found: $DTBO"
+    exit 1
+}
+
+mountpoint -q "$CFG" || mount -t configfs none "$CFG"
+
+if [ ! -d "$OVDIR" ]; then
+    mkdir -p "$OVDIR"
+    cat "$DTBO" > "$OVDIR/dtbo"
+    log "overlay loaded"
+else
+    log "overlay dir already exists, skip loading"
+fi
+
+# wait for driver bind
+i=0
+while [ ! -L /sys/bus/platform/devices/ff940000.hdmi/driver ]; do
+    i=$((i + 1))
+    [ "$i" -ge 50 ] && {
+        log "timeout waiting for ff940000.hdmi driver bind"
+        exit 1
+    }
+    sleep 0.1
+done
+log "ff940000.hdmi bound"
+
+# rebind rockchip-drm master
+if [ -L /sys/bus/platform/devices/display-subsystem/driver ]; then
+    echo display-subsystem > /sys/bus/platform/drivers/rockchip-drm/unbind
+    sleep 1
+fi
+
+echo display-subsystem > /sys/bus/platform/drivers/rockchip-drm/bind
+log "rockchip-drm rebound"
+
+# wait for HDMI connector to show up
+DRM_CARD=""
+for c in /sys/class/drm/card*; do
+    [ -e "$c/device" ] || continue
+    dev="$(readlink -f "$c/device" || true)"
+    case "$dev" in
+        */devices/platform/display-subsystem)
+            DRM_CARD="$(basename "$c")"
+            break
+            ;;
+    esac
+done
+
+[ -n "$DRM_CARD" ] || {
+    log "failed to locate DRM card for display-subsystem"
+    exit 1
+}
+
+log "display DRM card is $DRM_CARD"
+
+i=0
+while [ ! -e "/sys/class/drm/${DRM_CARD}-HDMI-A-1/status" ]; do
+    i=$((i + 1))
+    [ "$i" -ge 50 ] && {
+        log "timeout waiting for HDMI connector on ${DRM_CARD}"
+        exit 1
+    }
+    sleep 0.1
+done
+log "HDMI connector present on ${DRM_CARD}"

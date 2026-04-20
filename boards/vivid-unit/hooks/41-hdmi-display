@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOTFS="${1:?missing rootfs dir}"
+TOPDIR="${TOPDIR:?missing TOPDIR}"
+TARGET="${TARGET:?missing TARGET}"
+
+DTBO_SRC="$TOPDIR/boards/$TARGET/dts/kernel/overlays/rk3399-vivid-unit-hdmi.dtso"
+DTBO_DST="$ROOTFS/usr/lib/vuos/overlays/rk3399-vivid-unit-hdmi.dtbo"
+XORG_KMS_CONF="$ROOTFS/etc/X11/xorg.conf.d/20-vu-kms.conf"
+
+find_dtc() {
+    local cand
+    for cand in \
+        "$TOPDIR/out/kernel/$TARGET/build/scripts/dtc/dtc" \
+        "$(command -v dtc 2>/dev/null || true)"
+    do
+        [[ -n "$cand" && -x "$cand" ]] && {
+            printf '%s\n' "$cand"
+            return 0
+        }
+    done
+    return 1
+}
+
+patch_xorg_kms_conf() {
+    local f="$1"
+    [[ -f "$f" ]] || return 0
+    grep -q 'Identifier "VU-KMS"' "$f" || return 0
+    grep -q 'Monitor-HDMI-1' "$f" && return 0
+
+    python3 - "$f" <<'PY'
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+text = p.read_text()
+needle = 'Option "DRI" "3"\n'
+insert = '    Option "Monitor-HDMI-1" "HDMI-1-startup-off"\n'
+if insert in text:
+    raise SystemExit(0)
+if needle in text:
+    text = text.replace(needle, needle + insert, 1)
+else:
+    marker = 'EndSection\n'
+    idx = text.find(marker)
+    if idx == -1:
+        raise SystemExit('20-vu-kms.conf: cannot find insertion point')
+    text = text[:idx] + insert + text[idx:]
+p.write_text(text)
+PY
+}
+
+DTC_BIN="$(find_dtc)" || {
+    echo "41-hdmi-display: dtc not found. Install device-tree-compiler on the host or build the kernel stage first." >&2
+    exit 1
+}
+
+[[ -f "$DTBO_SRC" ]] || {
+    echo "41-hdmi-display: missing overlay source: $DTBO_SRC" >&2
+    exit 1
+}
+
+install -d "$ROOTFS/usr/lib/vuos/overlays"
+"$DTC_BIN" -@ -H epapr -O dtb -o "$DTBO_DST" "$DTBO_SRC"
+chmod 0644 "$DTBO_DST"
+
+patch_xorg_kms_conf "$XORG_KMS_CONF"
+
+chmod +x \
+    "$ROOTFS/usr/local/bin/vu-hdmi-session-helper.sh" \
+    "$ROOTFS/usr/local/sbin/vu-hdmi-early-init" \
+    "$ROOTFS/usr/share/lightdm/vu-display-setup.sh" \
+    2>/dev/null || true
+
+systemctl --root="$ROOTFS" enable vu-hdmi-early-init.service >/dev/null 2>&1 || true

@@ -295,10 +295,7 @@
 };
 
 &hdmi {
-	pinctrl-names = "default";
-	pinctrl-0 = <&hdmi_i2c_xfer>, <&hdmi_cec>;
-	#sound-dai-cells = <0>;
-	status = "okay";
+	status = "disabled";
 };
 
 &pcie_phy {
@@ -383,7 +380,7 @@
  */
 &display_subsystem {
 	status = "okay";
-	ports = <&vopl_out>, <&vopb_out>;
+	ports = <&vopl_out>;
 	route {
 		route_dsi: route-dsi {
 			status = "okay";
@@ -391,8 +388,7 @@
 		};
 
 		route_hdmi: route-hdmi {
-			status = "okay";
-			connect = <&vopb_out_hdmi>;
+			status = "disabled";
 		};
 	};
 };
