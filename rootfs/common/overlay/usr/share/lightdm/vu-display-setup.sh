@@ -45,8 +45,11 @@ echo "=== $(date -Is) ROTATION=$ROTATION ANGLE=$ANGLE XR=$XR M=$M DISPLAY=$DISPL
 
 mapfile -t CONNECTED_OUTPUTS < <(xrandr --query | grep " connected" | awk '{print $1}')
 for OUTPUT in "${CONNECTED_OUTPUTS[@]}"; do
-    if ! xrandr --output "$OUTPUT" --rotate "$XR"; then
-        echo "WARN: xrandr rotate failed for output '$OUTPUT'"
+    if [[ "$OUTPUT" == DSI-* ]]; then
+        TARGET_ROTATION="$XR"
+        if ! xrandr --output "$OUTPUT" --rotate "$TARGET_ROTATION"; then
+          echo "WARN: xrandr rotate failed for output '$OUTPUT' -> $TARGET_ROTATION"
+        fi
     fi
 done
 

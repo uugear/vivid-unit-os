@@ -1,0 +1,359 @@
+Subject: [PATCH] of: add configfs overlay interface
+
+---
+ drivers/of/Kconfig    |   7 +
+ drivers/of/Makefile   |   1 +
+ drivers/of/configfs.c | 313 ++++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 321 insertions(+)
+ create mode 100644 drivers/of/configfs.c
+
+diff --git a/drivers/of/Kconfig b/drivers/of/Kconfig
+index 0e2d608..98befe0 100644
+--- a/drivers/of/Kconfig
++++ b/drivers/of/Kconfig
+@@ -120,4 +120,11 @@ config OF_OVERLAY_KUNIT_TEST
+ config OF_NUMA
+ 	bool
+ 
++config OF_CONFIGFS
++	bool "Device Tree Overlay ConfigFS interface"
++	select CONFIGFS_FS
++	select OF_OVERLAY
++	help
++	  Enable a simple user-space driven DT overlay interface.
++
+ endif # OF
+diff --git a/drivers/of/Makefile b/drivers/of/Makefile
+index 379a0af..2be9021 100644
+--- a/drivers/of/Makefile
++++ b/drivers/of/Makefile
+@@ -11,6 +11,7 @@ obj-$(CONFIG_OF_UNITTEST) += unittest.o
+ obj-$(CONFIG_OF_RESERVED_MEM) += of_reserved_mem.o
+ obj-$(CONFIG_OF_RESOLVE)  += resolver.o
+ obj-$(CONFIG_OF_OVERLAY) += overlay.o
++obj-$(CONFIG_OF_CONFIGFS) += configfs.o
+ obj-$(CONFIG_OF_NUMA) += of_numa.o
+ 
+ ifdef CONFIG_KEXEC_FILE
+diff --git a/drivers/of/configfs.c b/drivers/of/configfs.c
+new file mode 100644
+index 0000000..1e22436
+--- /dev/null
++++ b/drivers/of/configfs.c
+@@ -0,0 +1,313 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Configfs interface for Device Tree overlays.
++ *
++ * This provides a small user-space driven overlay loader under
++ * /sys/kernel/config/device-tree/overlays.
++ *
++ * Supported flows:
++ *   - Write a firmware name to .../path
++ *   - Write a compiled .dtbo blob to .../dtbo
++ *   - Remove the overlay with rmdir on the item directory
++ */
++
++#include <linux/configfs.h>
++#include <linux/firmware.h>
++#include <linux/limits.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/of.h>
++#include <linux/slab.h>
++#include <linux/sizes.h>
++#include <linux/string.h>
++#include <linux/sysfs.h>
++
++struct cfs_overlay_item {
++	struct config_item item;
++	struct mutex lock;
++	char path[PATH_MAX];
++	const struct firmware *fw;
++	void *dtbo;
++	size_t dtbo_size;
++	int ovcs_id;
++};
++
++static inline struct cfs_overlay_item *to_cfs_overlay_item(struct config_item *item)
++{
++	return item ? container_of(item, struct cfs_overlay_item, item) : NULL;
++}
++
++static int cfs_overlay_apply(struct cfs_overlay_item *overlay,
++			     const void *blob, size_t blob_len)
++{
++	int ovcs_id = 0;
++	int ret;
++
++	ret = of_overlay_fdt_apply(blob, blob_len, &ovcs_id, NULL);
++	if (ret) {
++		/*
++		 * Per of_overlay_fdt_apply() documentation, a failing apply may have
++		 * partially instantiated an overlay. Best effort cleanup keeps the
++		 * live tree from being left in a surprising state.
++		 */
++		if (ovcs_id > 0) {
++			int ret2 = of_overlay_remove(&ovcs_id);
++
++			if (ret2)
++				pr_warn("OF configfs: cleanup of failed overlay apply failed: %d\n",
++					ret2);
++		}
++		return ret;
++	}
++
++	overlay->ovcs_id = ovcs_id;
++	return 0;
++}
++
++static ssize_t cfs_overlay_item_path_show(struct config_item *item, char *page)
++{
++	struct cfs_overlay_item *overlay = to_cfs_overlay_item(item);
++	ssize_t len;
++
++	mutex_lock(&overlay->lock);
++	len = sysfs_emit(page, "%s\n", overlay->path);
++	mutex_unlock(&overlay->lock);
++
++	return len;
++}
++
++static ssize_t cfs_overlay_item_path_store(struct config_item *item,
++					   const char *page, size_t count)
++{
++	struct cfs_overlay_item *overlay = to_cfs_overlay_item(item);
++	const struct firmware *fw;
++	char *tmp;
++	int ret;
++
++	tmp = kstrndup(page, count, GFP_KERNEL);
++	if (!tmp)
++		return -ENOMEM;
++
++	strim(tmp);
++	if (!*tmp) {
++		kfree(tmp);
++		return -EINVAL;
++	}
++
++	mutex_lock(&overlay->lock);
++	if (overlay->ovcs_id > 0 || overlay->dtbo_size > 0 || overlay->path[0]) {
++		ret = -EBUSY;
++		goto out_unlock;
++	}
++
++	ret = request_firmware(&fw, tmp, NULL);
++	if (ret)
++		goto out_unlock;
++
++	ret = cfs_overlay_apply(overlay, fw->data, fw->size);
++	if (ret) {
++		release_firmware(fw);
++		goto out_unlock;
++	}
++
++	strscpy(overlay->path, tmp, sizeof(overlay->path));
++	overlay->fw = fw;
++	ret = count;
++
++out_unlock:
++	mutex_unlock(&overlay->lock);
++	kfree(tmp);
++	return ret;
++}
++
++static ssize_t cfs_overlay_item_status_show(struct config_item *item, char *page)
++{
++	struct cfs_overlay_item *overlay = to_cfs_overlay_item(item);
++	ssize_t len;
++
++	mutex_lock(&overlay->lock);
++	len = sysfs_emit(page, "%s\n", overlay->ovcs_id > 0 ? "applied" : "unapplied");
++	mutex_unlock(&overlay->lock);
++
++	return len;
++}
++
++CONFIGFS_ATTR(cfs_overlay_item_, path);
++CONFIGFS_ATTR_RO(cfs_overlay_item_, status);
++
++static struct configfs_attribute *cfs_overlay_attrs[] = {
++	&cfs_overlay_item_attr_path,
++	&cfs_overlay_item_attr_status,
++	NULL,
++};
++
++static ssize_t cfs_overlay_item_dtbo_read(struct config_item *item,
++					  void *buf, size_t max_count)
++{
++	struct cfs_overlay_item *overlay = to_cfs_overlay_item(item);
++	size_t len;
++	ssize_t ret;
++
++	mutex_lock(&overlay->lock);
++	if (!overlay->dtbo) {
++		ret = 0;
++		goto out_unlock;
++	}
++
++	len = overlay->dtbo_size;
++	if (buf) {
++		if (len > max_count) {
++			ret = -ENOSPC;
++			goto out_unlock;
++		}
++		memcpy(buf, overlay->dtbo, len);
++	}
++
++	ret = len;
++
++out_unlock:
++	mutex_unlock(&overlay->lock);
++	return ret;
++}
++
++static ssize_t cfs_overlay_item_dtbo_write(struct config_item *item,
++					   const void *buf, size_t count)
++{
++	struct cfs_overlay_item *overlay = to_cfs_overlay_item(item);
++	void *copy;
++	int ret;
++
++	copy = kmemdup(buf, count, GFP_KERNEL);
++	if (!copy)
++		return -ENOMEM;
++
++	mutex_lock(&overlay->lock);
++	if (overlay->ovcs_id > 0 || overlay->dtbo_size > 0 || overlay->path[0]) {
++		ret = -EBUSY;
++		goto out_free_unlock;
++	}
++
++	ret = cfs_overlay_apply(overlay, copy, count);
++	if (ret)
++		goto out_free_unlock;
++
++	overlay->dtbo = copy;
++	overlay->dtbo_size = count;
++	ret = count;
++	mutex_unlock(&overlay->lock);
++	return ret;
++
++out_free_unlock:
++	mutex_unlock(&overlay->lock);
++	kfree(copy);
++	return ret;
++}
++
++CONFIGFS_BIN_ATTR(cfs_overlay_item_, dtbo, NULL, SZ_1M);
++
++static struct configfs_bin_attribute *cfs_overlay_bin_attrs[] = {
++	&cfs_overlay_item_attr_dtbo,
++	NULL,
++};
++
++static void cfs_overlay_release(struct config_item *item)
++{
++	struct cfs_overlay_item *overlay = to_cfs_overlay_item(item);
++
++	if (overlay->ovcs_id > 0) {
++		int ovcs_id = overlay->ovcs_id;
++		int ret = of_overlay_remove(&ovcs_id);
++
++		if (ret)
++			pr_warn("OF configfs: failed to remove overlay during release: %d\n",
++				ret);
++	}
++
++	if (overlay->fw)
++		release_firmware(overlay->fw);
++
++	kfree(overlay->dtbo);
++	kfree(overlay);
++}
++
++static struct configfs_item_operations cfs_overlay_item_ops = {
++	.release = cfs_overlay_release,
++};
++
++static const struct config_item_type cfs_overlay_type = {
++	.ct_item_ops = &cfs_overlay_item_ops,
++	.ct_attrs = cfs_overlay_attrs,
++	.ct_bin_attrs = cfs_overlay_bin_attrs,
++	.ct_owner = THIS_MODULE,
++};
++
++static struct config_item *cfs_overlay_group_make_item(struct config_group *group,
++					       const char *name)
++{
++	struct cfs_overlay_item *overlay;
++
++	(void)group;
++
++	overlay = kzalloc(sizeof(*overlay), GFP_KERNEL);
++	if (!overlay)
++		return ERR_PTR(-ENOMEM);
++
++	mutex_init(&overlay->lock);
++	config_item_init_type_name(&overlay->item, name, &cfs_overlay_type);
++	return &overlay->item;
++}
++
++static void cfs_overlay_group_drop_item(struct config_group *group,
++					struct config_item *item)
++{
++	(void)group;
++	config_item_put(item);
++}
++
++static struct configfs_group_operations overlays_ops = {
++	.make_item = cfs_overlay_group_make_item,
++	.drop_item = cfs_overlay_group_drop_item,
++};
++
++static const struct config_item_type overlays_type = {
++	.ct_group_ops = &overlays_ops,
++	.ct_owner = THIS_MODULE,
++};
++
++static struct configfs_group_operations of_cfs_ops = {
++	/* no direct children below /sys/kernel/config/device-tree */
++};
++
++static const struct config_item_type of_cfs_type = {
++	.ct_group_ops = &of_cfs_ops,
++	.ct_owner = THIS_MODULE,
++};
++
++static struct config_group of_cfs_overlay_group;
++
++static struct configfs_subsystem of_cfs_subsys = {
++	.su_group = {
++		.cg_item = {
++			.ci_namebuf = "device-tree",
++			.ci_type = &of_cfs_type,
++		},
++	},
++	.su_mutex = __MUTEX_INITIALIZER(of_cfs_subsys.su_mutex),
++};
++
++static int __init of_cfs_init(void)
++{
++	int ret;
++
++	config_group_init(&of_cfs_subsys.su_group);
++	config_group_init_type_name(&of_cfs_overlay_group, "overlays",
++				    &overlays_type);
++	configfs_add_default_group(&of_cfs_overlay_group, &of_cfs_subsys.su_group);
++
++	ret = configfs_register_subsystem(&of_cfs_subsys);
++	if (ret)
++		pr_err("OF configfs: failed to register subsystem: %d\n", ret);
++
++	return ret;
++}
++late_initcall(of_cfs_init);
+-- 
+2.47.3
+

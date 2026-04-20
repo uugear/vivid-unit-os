@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=VU HDMI Session Helper
+Exec=/usr/local/bin/vu-hdmi-session-helper.sh
+OnlyShowIn=XFCE;
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

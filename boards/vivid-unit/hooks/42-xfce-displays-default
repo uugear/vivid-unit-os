@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOTFS="${1:?missing rootfs dir}"
+VU_USER="${VU_USER:-vivid}"
+
+SRC="$ROOTFS/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/displays.xml"
+DST_DIR="$ROOTFS/home/$VU_USER/.config/xfce4/xfconf/xfce-perchannel-xml"
+DST="$DST_DIR/displays.xml"
+
+[ -f "$SRC" ] || exit 0
+
+install -d -m 0755 "$DST_DIR"
+install -m 0644 "$SRC" "$DST"
+
+if chroot "$ROOTFS" /usr/bin/id -u "$VU_USER" >/dev/null 2>&1; then
+    chroot "$ROOTFS" /bin/bash -lc "chown -R $VU_USER:$VU_USER /home/$VU_USER/.config"
+fi
