@@ -488,7 +488,11 @@
 	pinctrl-0 = <&sdmmc_clk &sdmmc_cmd &sdmmc_cd &sdmmc_bus4>;
 	vmmc-supply = <&vcc3v0_sd>;
 	vqmmc-supply = <&vcc_sdio>;
-	status = "okay";
+	/*
+	 * Keep the SDMMC pinctrl description available, but do not instantiate
+	 * the SDMMC host, otherwise the kernel will poll a non-existent card.
+	 */
+	status = "disabled";
 };
 
 &sdio0 {
