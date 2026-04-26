@@ -8,7 +8,7 @@ VU_APT_SUITE="${VU_APT_SUITE:-bookworm}"
 VU_APT_COMPONENTS="${VU_APT_COMPONENTS:-main}"
 VU_APT_KEYRING_URL="${VU_APT_KEYRING_URL:-https://vividunit.com/apt/public/vividunit-archive-keyring.gpg}"
 VU_APT_KEYRING_PATH="/usr/share/keyrings/vividunit-archive-keyring.gpg"
-VU_APT_INSTALL_PKGS="${VU_APT_INSTALL_PKGS:-vgp vsa vtest}"
+VU_APT_INSTALL_PKGS="${VU_APT_INSTALL_PKGS:-vgp vsa vinfo vtest}"
 
 # Debian APT sources are provided via suite overlay (etc/apt/sources.list),
 # which includes non-free-firmware.
