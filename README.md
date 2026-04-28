@@ -71,12 +71,15 @@ sudo apt install -y \
   e2fsprogs \
   gawk \
   gcc-aarch64-linux-gnu \
+  gcc-12-aarch64-linux-gnu g++-12-aarch64-linux-gnu \
   bc bison flex \
   libssl-dev openssl \
   ca-certificates \
   python3-setuptools python3-dev \
   qemu-user-static binfmt-support
 ```
+The Vivid Unit kernel is intentionally built with `aarch64-linux-gnu-gcc-12` so that the optional kernel headers package remains compatible with the default GCC 12 toolchain available inside Vivid Unit OS (Debian 12 / Bookworm).
+
 A typical build flow looks like this:
 
 ```bash
@@ -91,6 +94,28 @@ Alternatively you may build everything with just one command:
 sudo ./vuos build vivid-unit
 ```
 At the end of building you will get an image file named vuos-YYYYMMDD-N.img, where YYYYMMDD is the date and N is the serial number of the build. 
+
+### Optional Kernel Headers Package
+
+The default system image does not include kernel headers. After building the matching kernel, you can create an optional installable headers package manually:
+
+```bash
+./vuos headers vivid-unit
+```
+
+The package is written to:
+
+```bash
+out/headers/vivid-unit/linux-headers-6.12.73-vuos-1_arm64.deb
+```
+
+Install it on Vivid Unit when you need to build out-of-tree kernel modules:
+
+```bash
+sudo dpkg -i linux-headers-6.12.73-vuos-1_arm64.deb
+```
+
+This package installs `/usr/src/linux-headers-6.12.73-vuos/` and the matching `/lib/modules/6.12.73-vuos/build` and `/lib/modules/6.12.73-vuos/source` links.
 
 The exact workflow may evolve as the project is refined.
 

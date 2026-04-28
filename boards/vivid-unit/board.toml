@@ -27,6 +27,10 @@ overlay_dirs = [
 [kernel]
 version    = "6.12.73"
 release    = "6.12.73-vuos"
+# Keep the kernel compiler aligned with Debian 12 / Bookworm on-device GCC.
+# This makes the optional linux-headers package usable for native out-of-tree
+# module builds on Vivid Unit without requiring a newer GCC on the device.
+cc         = "aarch64-linux-gnu-gcc-12"
 defconfig  = "kernel/configs/vivid_unit_defconfig"
 dts        = [
   "boards/vivid-unit/dts/kernel/rk3399-vivid-unit.dts",

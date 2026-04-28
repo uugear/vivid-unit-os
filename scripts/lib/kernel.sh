@@ -29,6 +29,7 @@ Environment variables:
   OUT_DIR           Top-level output dir (default: <repo>/out; also holds cache/src trees)
   ARCH              (default: arm64)
   CROSS_COMPILE     (default: aarch64-linux-gnu-)
+  KERNEL_CC         Kernel target compiler (default: from board.toml, e.g. aarch64-linux-gnu-gcc-12)
   JOBS              Parallel jobs for make (default: nproc)
 
 DTB / incbin note:
@@ -260,20 +261,30 @@ _vuos_kernel_build_dtbs() {
 }
 
 _vuos_kernel_build_image_and_modules() {
-  local ksrc="$1" kout="$2" arch="$3" cross="$4" jobs="$5" defconfig_file="$6" out_base="$7" no_mod_install="$8"
+  local ksrc="$1" kout="$2" arch="$3" cross="$4" cc="$5" jobs="$6" defconfig_file="$7" out_base="$8" no_mod_install="$9"
 
   [[ -f "$defconfig_file" ]] || vuos_die "Defconfig not found: $defconfig_file"
 
   vuos_mkdir "$kout"
 
+  local -a make_vars=(
+    ARCH="$arch"
+    CROSS_COMPILE="$cross"
+    KERNELRELEASE="$krel"
+  )
+
+  if [[ -n "$cc" ]]; then
+    make_vars+=(CC="$cc")
+  fi
+
   # Seed config
   cp -f "$defconfig_file" "$kout/.config"
 
   vuos_log "Kernel: olddefconfig"
-  make -C "$ksrc" O="$kout" ARCH="$arch" CROSS_COMPILE="$cross" KERNELRELEASE="$krel" olddefconfig
+  make -C "$ksrc" O="$kout" "${make_vars[@]}" olddefconfig
 
   vuos_log "Kernel: build Image + modules (jobs=$jobs)"
-  make -C "$ksrc" O="$kout" ARCH="$arch" CROSS_COMPILE="$cross" -j"$jobs" KERNELRELEASE="$krel" Image modules
+  make -C "$ksrc" O="$kout" "${make_vars[@]}" -j"$jobs" Image modules
 
   local img="$kout/arch/$arch/boot/Image"
   [[ -f "$img" ]] || vuos_die "Kernel Image not found after build: $img"
@@ -290,7 +301,7 @@ _vuos_kernel_build_image_and_modules() {
   local mod_dest="$out_base/modules"
   vuos_mkdir "$mod_dest"
   vuos_log "Kernel: modules_install -> $mod_dest"
-  make -C "$ksrc" O="$kout" ARCH="$arch" CROSS_COMPILE="$cross" KERNELRELEASE="$krel" \
+  make -C "$ksrc" O="$kout" "${make_vars[@]}" \
     modules_install INSTALL_MOD_PATH="$mod_dest" INSTALL_MOD_STRIP=1
 }
 
@@ -325,7 +336,13 @@ vuos_kernel_main() {
   local kver="${KERNEL_VERSION:-}"
   local arch="${ARCH:-arm64}"
   local cross="${CROSS_COMPILE:-aarch64-linux-gnu-}"
+  local cc="${CC:-${KERNEL_CC:-}}"
   local jobs="${JOBS:-$(nproc)}"
+
+  if [[ -n "$cc" ]]; then
+    command -v "$cc" >/dev/null 2>&1 || vuos_die "Kernel compiler not found: $cc"
+    vuos_log "Kernel: compiler -> $cc"
+  fi
 
   local out_dir="${OUT_DIR:-$topdir/out}"
   out_dir="$(vuos_abspath "$out_dir")"
@@ -381,7 +398,7 @@ vuos_kernel_main() {
   local defconfig_file="${KERNEL_DEFCONFIG:-$topdir/kernel/configs/vivid_unit_defconfig}"
 
   if [[ "$do_img" == "1" ]]; then
-    _vuos_kernel_build_image_and_modules "$ksrc" "$kout" "$arch" "$cross" "$jobs" "$defconfig_file" "$out_base" "$no_mod_install"
+    _vuos_kernel_build_image_and_modules "$ksrc" "$kout" "$arch" "$cross" "$cc" "$jobs" "$defconfig_file" "$out_base" "$no_mod_install"
   fi
 
   if [[ "$do_dtb" == "1" ]]; then
@@ -396,6 +413,10 @@ vuos_kernel_main() {
     echo "kernel_version_selector=$kver"
     echo "arch=$arch"
     echo "cross_compile=$cross"
+    echo "cc=$cc"
+    if [[ -n "$cc" ]] && command -v "$cc" >/dev/null 2>&1; then
+      "$cc" --version | head -1 | sed 's/^/cc_version=/'
+    fi
     echo "kout=$kout"
     date -Is | sed 's/^/built_at=/'
     if [[ -x "$ksrc/Makefile" ]]; then :; fi

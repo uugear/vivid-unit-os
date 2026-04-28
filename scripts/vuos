@@ -16,11 +16,13 @@ Stages:
   kernel   Build Linux kernel (Image + DTBs + modules)
   rootfs   Build root filesystem image
   pack     Pack final raw disk image
+  headers  Build optional matching kernel headers .deb (manual stage)
 
 Examples:
   sudo ./vuos build vivid-unit
   ./vuos build uboot vivid-unit --clean
   sudo ./vuos pack vivid-unit
+  ./vuos headers vivid-unit
 USAGE
 }
 
@@ -67,7 +69,7 @@ case "$cmd" in
     shift 3
 
     case "$stage" in
-      atf|uboot|kernel|rootfs|pack)
+      atf|uboot|kernel|rootfs|pack|headers)
         run_stage "$stage" "$target" "$@"
         ;;
       *)
@@ -78,7 +80,7 @@ case "$cmd" in
     esac
     ;;
 
-  atf|uboot|kernel|rootfs|pack)
+  atf|uboot|kernel|rootfs|pack|headers)
     [[ -n "$arg1" ]] || { _usage; exit 2; }
     stage="$cmd"
     target="$arg1"

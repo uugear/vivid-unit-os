@@ -81,6 +81,8 @@ def main() -> None:
 
     emit_kv("KERNEL_VERSION", k.get("version", ""))
     emit_kv("KERNEL_RELEASE", k.get("release", k.get("version", "")))
+    if k.get("cc"):
+        emit_kv("KERNEL_CC", k.get("cc"))
     emit_kv("KERNEL_DEFCONFIG", rpath(topdir, k["defconfig"]))
 
     dts_list = k.get("dts", [])
