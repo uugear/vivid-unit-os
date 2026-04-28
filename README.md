@@ -112,7 +112,7 @@ out/headers/vivid-unit/linux-headers-6.12.73-vuos-1_arm64.deb
 Install it on Vivid Unit when you need to build out-of-tree kernel modules:
 
 ```bash
-sudo dpkg -i linux-headers-6.12.73-vuos-1_arm64.deb
+sudo apt install ./linux-headers-6.12.73-vuos-1_arm64.deb
 ```
 
 This package installs `/usr/src/linux-headers-6.12.73-vuos/` and the matching `/lib/modules/6.12.73-vuos/build` and `/lib/modules/6.12.73-vuos/source` links.
